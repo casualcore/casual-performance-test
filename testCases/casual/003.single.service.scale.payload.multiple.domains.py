@@ -1,4 +1,4 @@
-from locust import FastHttpUser, task, LoadTestShape, events
+from locust import FastHttpUser, task, events
 import base64
 import requests
 
@@ -10,8 +10,6 @@ global_100K = base64.b64encode( bytes( 100 * 1024))
 
 class TestCase( FastHttpUser):
    """ Single service scale payload multiple domains """
-
-   host =  global_host
 
    @task
    def task1( self):
@@ -62,15 +60,3 @@ def on_test_stop( environment, **kwargs):
    print( "Test done")
    #TODO get casual metrics
       
-class LoadShape( LoadTestShape):
-   time_limit = 10 # seconds
-   user_count = 1
-   spawn_rate = 1
-
-   def tick( self):
-      run_time = self.get_run_time()
-
-      if run_time < self.time_limit:
-         return ( self.user_count, self.spawn_rate)
-
-      return None

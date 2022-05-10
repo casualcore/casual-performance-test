@@ -1,5 +1,5 @@
 #!/bin/bash
 
-for filename in *.py; do
-   locust -f $filename --headless
+for filename in *.conf; do
+   locust --config $filename;
 done
