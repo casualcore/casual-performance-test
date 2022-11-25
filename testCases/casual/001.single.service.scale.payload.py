@@ -1,6 +1,8 @@
 from locust import FastHttpUser, task, events
 import base64
 import requests
+import os
+from helpers import *
 
 global_host = "http://host2:8201"
 global_1B = base64.b64encode( bytes( 1))
@@ -43,20 +45,28 @@ class TestCase( FastHttpUser):
          headers = { "content-type": "application/casual-x-octet"},
          data = global_100K)
 
+
 @events.test_start.add_listener
 def on_test_start( environment, **kwargs):
-   print( "Test start")
    # Warm up
    for i in range( 10):
-     requests.post(
+      requests.post(
          url = global_host + "/casual/casual/example/echo",
          headers = { "content-type": "application/casual-x-octet"},
          data = global_1K)
+
+   # Start telegraf
+   os.system( "ssh cas201@host2 'nohup telegraf -config telegraf.conf &>/dev/null &'")
    
-   #TODO reset casual metrics
+   # Reset casual metrics
+   resetCasualMetrics( global_host)
 
 @events.test_stop.add_listener
 def on_test_stop( environment, **kwargs):
-   print( "Test done")
-   #TODO get casual metrics
-      
+   # Stop telegraf
+   os.system( "ssh cas201@host2 kill $(ssh cas201@host2 ps | grep telegraf | awk '{print $1}')")
+   os.system( "scp cas201@host2:metrics/telegraf.txt $HOME/testResults/001.cas201.telegraf.metrics.txt")
+   
+   # Get casual metrics
+   getCasualMetrics( global_host, "001", "cas201")
+
