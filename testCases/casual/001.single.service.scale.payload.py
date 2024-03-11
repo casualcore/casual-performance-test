@@ -1,32 +1,41 @@
-from locust import FastHttpUser, task, events, constant
+from locust import FastHttpUser, task, events
 import base64
 import requests
 import os
-from helpers import resetCasualMetrics, getCasualMetrics, writeStartInformation, writeStopInformation
-import time
-import csv
+from casual.performance.test import telegraf
+from casual.performance.test import casual
+from casual.performance.test import helpers
+import inspect
+
+import user_config
+
+###########################################################################################################
+#
+# Global declarations needed in locust testfiles
 
 starttime=float()
+configuration={}
 
 @events.init_command_line_parser.add_listener
 def _(parser):
     parser.add_argument("--use-remote-nodes", default=False, action='store_true', help="Remote node mode")
+
+###########################################################################################################
 
 global_1B = base64.b64encode( bytes( 1))
 global_1K = base64.b64encode( bytes( 1 * 1024))
 global_10K = base64.b64encode( bytes( 10 * 1024))
 global_100K = base64.b64encode( bytes( 100 * 1024))
 
+
 class TestCase( FastHttpUser):
    """ Single service scale payload """
-   wait_time = constant(1)
-
 
    @task
    def task1( self):
       self.client.post(
          name = "1B",
-         url = "/casual/casual/example/echo",
+         url = "/casual/example/echo",
          headers = { "content-type": "application/casual-x-octet"},
          data = global_1B)
 
@@ -34,7 +43,7 @@ class TestCase( FastHttpUser):
    def task2( self):
       self.client.post(
          name = "1K",
-         url = "/casual/casual/example/echo",
+         url = "/casual/example/echo",
          headers = { "content-type": "application/casual-x-octet"},
          data = global_1K)
 
@@ -42,7 +51,7 @@ class TestCase( FastHttpUser):
    def task3( self):
       self.client.post(
          name = "10K",
-         url = "/casual/casual/example/echo",
+         url = "/casual/example/echo",
          headers = { "content-type": "application/casual-x-octet"},
          data = global_10K)
 
@@ -50,39 +59,84 @@ class TestCase( FastHttpUser):
    def task4( self):
       self.client.post(
          name = "100K",
-         url = "/casual/casual/example/echo",
+         url = "/casual/example/echo",
          headers = { "content-type": "application/casual-x-octet"},
          data = global_100K)
+
+def domainX( base: str, environment: dict):
+   """
+   domain definition for a testdomain
+   """
+
+   # Use name of function as name of domain
+   name = inspect.currentframe().f_code.co_name
+   home = os.path.join( base, name)
+
+   # Note the double ${{}} to escape f-string functionality
+   return {
+            "name" : name,
+            "home" : home,
+            "remote" : user_config.remote( name),
+            "files" : 
+            [
+               {
+                  "filename" : "configuration/domain.yaml",
+                  "content" : f"""
+domain:
+  name: {name}
+
+  servers:
+    - alias: casual-example-server
+      path: ${{CASUAL_HOME}}/example/bin/casual-example-server
+      instances: 1
+      arguments:
+        - --sleep 
+        - 2s
+
+  executables:
+    - alias: casual-http-inbound
+      path: ${{CASUAL_HOME}}/nginx/sbin/nginx
+      arguments: 
+        - "-c" 
+        - ${{CASUAL_DOMAIN_HOME}}/configuration/nginx.conf
+        - "-p"
+        - ${{CASUAL_DOMAIN_HOME}}
+
+    - alias: casual-event-service-log
+      path: ${{CASUAL_HOME}}/bin/casual-event-service-log
+      arguments: [ --file, logs/statistics.log ]
+
+"""
+               }
+            ],
+            "nginx_port" : user_config.port( name)
+         }
+
 
 @events.test_start.add_listener
 def on_test_start( environment, **kwargs):
    global starttime
-   # Warm up
-   for i in range( 10):
-      requests.post(
-         url = environment.host + "/casual/casual/example/echo",
-         headers = { "content-type": "application/casual-x-octet"},
-         data = global_1K)
+   global configuration
 
-   # Start telegraf
-   if environment.parsed_options.use_remote_nodes:
-      os.system( "ssh cas201@host2 'nohup telegraf -config telegraf.conf &>/dev/null &'")
+   base = casual.make_base()
 
-   starttime = writeStartInformation( environment)
+   configuration = {
+      "domains": 
+      [
+         telegraf.config( base, "telegraf", user_config.remote( "telegraf")),
+         domainX( base, environment)
+      ]
+   }
 
-   # Reset casual metrics
-   resetCasualMetrics( environment.host)
+   casual.on_test_start( configuration, environment)
+   starttime = helpers.write_start_information( configuration, environment)
 
 @events.test_stop.add_listener
 def on_test_stop( environment, **kwargs):
    global starttime
+   global configuration
 
-   # Stop telegraf
-   if environment.parsed_options.use_remote_nodes:
-      os.system( "ssh cas201@host2 kill $(ssh cas201@host2 ps | grep telegraf | awk '{print $1}')")
-      os.system( "scp cas201@host2:metrics/telegraf.txt $HOME/testResults/001.cas201.telegraf.metrics.txt")
+   casual.on_test_stop( configuration, environment)
 
-   # Get casual metrics
-   getCasualMetrics( environment.host, "001", "cas201")
+   helpers.write_stop_information( configuration, environment, starttime)
 
-   writeStopInformation( environment, starttime)
