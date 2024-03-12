@@ -2,10 +2,28 @@ from locust import FastHttpUser, task, events
 import base64
 import requests
 import os
-from helpers import *
 
-global_host = "http://host2:8204"
-global_host2 = "http://host3:8304"
+from casual.performance.test import telegraf
+from casual.performance.test import casual
+from casual.performance.test import helpers
+import inspect
+
+import user_config
+
+import time
+###########################################################################################################
+#
+# Global declarations needed in locust testfiles
+
+starttime=float()
+configuration={}
+
+@events.init_command_line_parser.add_listener
+def _(parser):
+    parser.add_argument("--use-remote-nodes", default=False, action='store_true', help="Remote node mode")
+
+###########################################################################################################
+
 global_10K = base64.b64encode( bytes( 10 * 1024))
 
 class TestCase( FastHttpUser):
@@ -15,37 +33,175 @@ class TestCase( FastHttpUser):
    def task1( self):
       self.client.post(
          name = "10K",
-         path = "/casual/casual/example/echo",
+         url = "/casual/example/echo",
          headers = { "content-type": "application/casual-x-octet"},
          data = global_10K)
 
+
+def domainX( base: str, environment: dict):
+   """
+   domain definition for a testdomain
+   """
+
+   # Use name of function as name of domain
+   name = inspect.currentframe().f_code.co_name
+   home = os.path.join( base, name)
+
+   # Note the double ${{}} to escape f-string functionality
+   return {
+            "name" : name,
+            "home" : home,
+            "remote" : user_config.get( name),
+            "files" : 
+            [
+               {
+                  "filename" : "configuration/domain.yaml",
+                  "content" : f"""
+system:
+  resources:
+    - key: "rm-mockup"
+      server: "rm-proxy-casual-mockup"
+      xa_struct_name: "casual_mockup_xa_switch_static"
+      libraries:
+        - "casual-mockup-rm"
+      paths:
+        library:
+          - "${{CASUAL_HOME}}/lib"
+
+domain:
+  name: {name}
+
+  transaction:
+    resources:
+      - name: example-resource-server
+        key: rm-mockup
+        instances: 2
+
+  executables:
+    - alias: casual-http-inbound
+      path: ${{CASUAL_HOME}}/nginx/sbin/nginx
+      arguments: 
+        - "-c" 
+        - ${{CASUAL_DOMAIN_HOME}}/configuration/nginx.conf
+        - "-p"
+        - ${{CASUAL_DOMAIN_HOME}}
+
+    - alias: casual-event-service-log
+      path: ${{CASUAL_HOME}}/bin/casual-event-service-log
+      arguments: [ --file, logs/statistics.log ]
+      instances: 1
+
+  gateway:
+    outbound:
+      groups:
+        - alias: outbound
+          connections:
+            - address: {user_config.get("domainY")["gateway_inbound_address"]}
+
+"""
+               }
+            ],
+            "nginx_port" : user_config.port( name)
+         }
+
+def domainY( base: str, environment: dict):
+   """
+   domain definition for a testdomain
+   """
+
+   # Use name of function as name of domain
+   name = inspect.currentframe().f_code.co_name
+   home = os.path.join( base, name)
+
+   # Note the double ${{}} to escape f-string functionality
+   return {
+            "name" : name,
+            "home" : home,
+            "remote" : user_config.get( name),
+            "files" : 
+            [
+               {
+                  "filename" : "configuration/domain.yaml",
+                  "content" : f"""
+system:
+  resources:
+    - key: "rm-mockup"
+      server: "rm-proxy-casual-mockup"
+      xa_struct_name: "casual_mockup_xa_switch_static"
+      libraries:
+        - "casual-mockup-rm"
+      paths:
+        library:
+          - "${{CASUAL_HOME}}/lib"
+
+domain:
+  name: {name}
+
+  transaction:
+    resources:
+      - name: example-resource-server
+        key: rm-mockup
+        instances: 2
+
+  servers:
+    - alias: casual-example-server
+      path: ${{CASUAL_HOME}}/example/bin/casual-example-server
+      instances: 10
+
+  executables:
+    - alias: casual-http-inbound
+      path: ${{CASUAL_HOME}}/nginx/sbin/nginx
+      arguments: 
+        - "-c" 
+        - ${{CASUAL_DOMAIN_HOME}}/configuration/nginx.conf
+        - "-p"
+        - ${{CASUAL_DOMAIN_HOME}}
+
+    - alias: casual-event-service-log
+      path: ${{CASUAL_HOME}}/bin/casual-event-service-log
+      arguments: [ --file, logs/statistics.log ]
+      instances: 1
+
+  gateway:
+    inbound:
+      groups:
+        - alias: inbound
+          connections:
+            - address: {user_config.get("domainY")["gateway_inbound_address"]}
+
+"""
+               }
+            ],
+            "nginx_port" : user_config.port( name)
+         }
 
 @events.test_start.add_listener
 def on_test_start( environment, **kwargs):
-   # Warm up
-   for i in range( 10):
-      requests.post(
-         url = global_host + "/casual/casual/example/echo",
-         headers = { "content-type": "application/casual-x-octet"},
-         data = global_10K)
-   
-   # Start telegraf
-   os.system( "ssh cas201@host2 'nohup telegraf -config telegraf.conf &>/dev/null &'")
-   os.system( "ssh cas301@host3 'nohup telegraf -config telegraf.conf &>/dev/null &'")
+   global starttime
+   global configuration
 
-   # Reset casual metrics
-   resetCasualMetrics( global_host)
-   resetCasualMetrics( global_host2)
+   base = casual.make_base()
+
+   configuration = {
+      "domains": 
+      [
+         telegraf.config( base, "telegrafA", user_config.get( "telegrafA")),
+         telegraf.config( base, "telegrafB", user_config.get( "telegrafB")),
+         domainX( base, environment),
+         domainY( base, environment)
+      ]
+   }
+
+   casual.on_test_start( configuration, environment)
+   starttime = helpers.write_start_information( configuration, environment)
+   time.sleep(5)
 
 @events.test_stop.add_listener
 def on_test_stop( environment, **kwargs):
-   # Stop telegraf
-   os.system( "ssh cas201@host2 kill $(ssh cas201@host2 ps | grep telegraf | awk '{print $1}')")
-   os.system( "scp cas201@host2:metrics/telegraf.txt $HOME/testResults/004.cas201.telegraf.metrics.txt")
-   os.system( "ssh cas301@host3 kill $(ssh cas301@host3 ps | grep telegraf | awk '{print $1}')")
-   os.system( "scp cas301@host3:metrics/telegraf.txt $HOME/testResults/004.cas301.telegraf.metrics.txt")
+   global starttime
+   global configuration
 
-   # Get casual metrics
-   getCasualMetrics( global_host, "004", "cas204")
-   getCasualMetrics( global_host, "004", "cas304")
+   casual.on_test_stop( configuration, environment)
+
+   helpers.write_stop_information( configuration, environment, starttime)
       

@@ -1,10 +1,12 @@
 import os
 from pathlib import Path
 from locust.env import Environment
+from casual.performance.test import helpers
 
 def config( base: str, name: str, remote: dict):
 
     home = os.path.join( base, name)
+    casual_home = remote["casual_home"] if "casual_home" in remote else "/opt/casual" 
     return {
             "name" : name,
             "home" : home,
@@ -15,7 +17,7 @@ def config( base: str, name: str, remote: dict):
                {
                   "filename" : "domain.env",
                   "content" : f"""
-export CASUAL_HOME=$HOME/usr/local/casual
+export CASUAL_HOME={casual_home}
 export PATH=$CASUAL_HOME/bin:$PATH 
 export LD_LIBRARY_PATH=$CASUAL_HOME/lib:$LD_LIBRARY_PATH
 
@@ -23,9 +25,10 @@ export LD_LIBRARY_PATH=$CASUAL_HOME/lib:$LD_LIBRARY_PATH
 export CASUAL_DOMAIN_HOME={home}
 
 # Defines what will be logged.
-export CASUAL_LOG='.*'
+export CASUAL_LOG='(error|warning|information)'
 
-export TELEGRAF_HOME=/opt/homebrew/opt/telegraf
+export CASUAL_LOG_PATH=$CASUAL_DOMAIN_HOME/logs/casual.log
+
 """
                },
                {
@@ -37,8 +40,8 @@ domain:
   executables:
 
     - alias: telegraf
-      path: ${{TELEGRAF_HOME}}/bin/telegraf 
-      arguments: [ -config, configuration/telegraf.conf, -config-directory, /opt/homebrew/etc/telegraf.d ]
+      path: {remote['binpath']}/telegraf 
+      arguments: [ -config, configuration/telegraf.conf]
 
 """
                },
@@ -49,24 +52,25 @@ domain:
 #                            INPUT PLUGINS                                    #
 ###############################################################################
 
+# Telegraf configuration
 
+[tags]
+  tenant = "Casual"
+
+# Configuration for telegraf agent
 [agent]
+  interval = "1s"
+  round_interval = true
+  flush_interval = "10s"
+  flush_jitter = "0s"
+  debug = false
+  hostname = ""
   quiet = true
 
-# Read metrics about cpu usage
 [[inputs.cpu]]
-  ## Whether to report per-cpu stats or not
-  percpu = true
-  ## Whether to report total system cpu stats or not
+  percpu = false
   totalcpu = true
-  ## If true, collect raw CPU time metrics
-  collect_cpu_time = false
-  ## If true, compute and report the sum of all non-idle CPU states
-  ## NOTE: The resulting 'time_active' field INCLUDES 'iowait'!
-  report_active = false
-  ## If true and the info is available then add core_id and physical_id tags
-  core_tags = false
-
+  drop = ["cpu_time"]
 
 # Read metrics about memory usage
 [[inputs.mem]]
@@ -86,17 +90,7 @@ domain:
   ## Files to write to, "stdout" is a specially handled file.
   files = ["logs/metrics.txt"]
 
-  ## Data format to output.
-  ## Each data format has its own unique set of configuration options, read
-  ## more about them here:
-  ## https://github.com/influxdata/telegraf/blob/master/docs/DATA_FORMATS_OUTPUT.md
   data_format = "json"
-
-  ## The resolution to use for the metric timestamp.  Must be a duration string
-  ## such as "1ns", "1us", "1ms", "10ms", "1s".  Durations are truncated to
-  ## the power of 10 less than the specified units.
-  json_timestamp_units = "1s"
-
 """
                }
             ]
@@ -109,11 +103,11 @@ def metrics( configuration: dict, environment: Environment):
    for domain in configuration.get("domains", {}):
       if 'remote' in domain and 'type' in domain['remote'] and domain['remote']['type'] == "telegraf":
         if not environment.parsed_options.use_remote_nodes:
-          os.system( f"cp {domain['home']}/logs/metrics.txt {csv_prefix}_{domain['name']}_metrics.txt")
+          helpers.execute( f"cp {domain['home']}/logs/metrics.txt {csv_prefix}_{domain['name']}_telegraf.metrics.txt")
 
         else:
-          source = domain['remote']['user'] + "@" + domain['remote']['host']
+          source = domain['remote']['user'] + "@" + domain['remote']['host'] + ":" + domain['home']
 
           if source:
-            os.system( f"scp {source}/logs/metrics.txt {csv_prefix}_{domain['name']}_metrics.txt")
+            helpers.scp( f"{source}/logs/metrics.txt", f"{csv_prefix}_{domain['name']}_telegraf.metrics.txt")
 

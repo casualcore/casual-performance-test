@@ -47,13 +47,13 @@ def metrics( configuration: dict, environment: dict):
 
       if 'remote' in domain and 'type' in domain['remote'] and domain['remote']['type'] == "casual":
         if not environment.parsed_options.use_remote_nodes:
-          os.system( f"cp {domain['home']}/logs/statistics.log {csv_prefix}_{domain['name']}_statistics.log")
+          helpers.execute( f"cp {domain['home']}/logs/statistics.log {csv_prefix}_{domain['name']}_statistics.log")
 
         else:
-          destination = domain['remote']['user'] + "@" + domain['remote']['host']
+          source = domain['remote']['user'] + "@" + domain['remote']['host'] + ":" + domain['home']
 
-          if destination:
-            os.system( f"scp {destination}/logs/statistics.log {csv_prefix}_{domain['name']}_statistics.log")
+          if source:
+            helpers.scp( f"{source}/logs/statistics.log", f"{csv_prefix}_{domain['name']}_statistics.log")
 
 
 
@@ -113,11 +113,13 @@ def on_test_stop( configuration, environment):
    telegraf.metrics( configuration, environment)
  
    stop_domains( configuration, environment)
-   remove_domains( configuration, environment)
+   #remove_domains( configuration, environment)
 
 
 def make_base():
-   return tempfile.mkdtemp(dir="/var/tmp")
+   location = tempfile.mkdtemp(dir="/var/tmp")
+   print(f"BASEDIR for domains:[{location}]")
+   return location
 
 def make_home( home: str):
    os.makedirs( os.path.join( home, "configuration" ))
@@ -136,10 +138,12 @@ def setup_domains( configuration: dict, environment: Environment):
             file.write( configuration_file["content"])
             file.write( "\n")
 
+      casual_home = domain["remote"]["casual_home"] if "casual_home" in domain["remote"] else "/opt/casual" 
       if default_domain_env:
+         casual_log = domain["remote"]["casual_log"] if "casual_log" in domain["remote"] else "(error|warning|information)"
          with open( f"{domain['home']}/domain.env", 'w') as file:
             file.write( f"""
-export CASUAL_HOME=$HOME/usr/local/casual
+export CASUAL_HOME={casual_home}
 export PATH=$CASUAL_HOME/bin:$PATH 
 export LD_LIBRARY_PATH=$CASUAL_HOME/lib:$LD_LIBRARY_PATH
 
@@ -147,7 +151,9 @@ export LD_LIBRARY_PATH=$CASUAL_HOME/lib:$LD_LIBRARY_PATH
 export CASUAL_DOMAIN_HOME={domain['home']}
 
 # Defines what will be logged.
-export CASUAL_LOG='.*'
+export CASUAL_LOG='{(casual_log)}'
+
+export CASUAL_LOG_PATH=$CASUAL_DOMAIN_HOME/logs/casual.log
 
 """)
             file.write( '\n')
@@ -216,10 +222,8 @@ http {{
 
       if environment.parsed_options.use_remote_nodes:
          destination = domain["remote"]["user"] + "@" + domain["remote"]["host"]
-         os.system(f"""
-            ssh {destination} mkdir -p {domain['home']}
-            scp -r {domain['home']}/* {destination}:{domain['home']}
-""")
+         helpers.execute(f"""mkdir -p {domain['home']}""", destination)
+         helpers.scp( f"{domain['home']}/*", f"{destination}:{domain['home']}", recursive=True)
 
    return configuration
 
@@ -227,20 +231,13 @@ def start_domains( configuration: dict, environment: Environment):
 
    for domain in configuration.get("domains", {}):
       if not environment.parsed_options.use_remote_nodes:
-         os.system(f"""
-         cd {domain["home"]}
-         . domain.env
-         casual domain --boot configuration/domain.yaml
-         """)
+         destination = "localhost"
       else:
          destination = domain["remote"]["user"] + "@" + domain["remote"]["host"]
-         os.system(f"""
-            ssh {destination} '
-            cd {domain["home"]}
-            . domain.env
-            casual domain --boot configuration/domain.yaml
-'
-""")
+
+      helpers.execute(f'cd {domain["home"]} && . domain.env && casual domain --boot configuration/domain.yaml', 
+         destination)
+
 
    time.sleep(1.0)
 
@@ -248,35 +245,20 @@ def stop_domains( configuration: dict, environment: Environment):
 
    for domain in configuration.get("domains", {}):
       if not environment.parsed_options.use_remote_nodes:
-         os.system(f"""
-         cd {domain["home"]}
-         . domain.env
-         casual domain --shutdown
-         """)
+         destination = "localhost"
       else:
          destination = domain["remote"]["user"] + "@" + domain["remote"]["host"]
-         os.system(f"""
-            ssh {destination} '
-            cd {domain["home"]}
-            . domain.env
-            casual domain --shutdown
-'
-""")
+
+      helpers.execute(f'cd {domain["home"]} && . domain.env && casual domain --shutdown', destination)
+
+   time.sleep(1.0)
+
 
 def remove_domains( configuration: dict, environment: Environment):
 
    for domain in configuration.get("domains", {}):
-      if not environment.parsed_options.use_remote_nodes:
-         os.system(f"""
-         rm -rf {domain["home"]}
-         """)
-      else:
+      if environment.parsed_options.use_remote_nodes:
          destination = domain["remote"]["user"] + "@" + domain["remote"]["host"]
-         os.system(f"""
-            ssh {destination} '
-            rm -rf {domain["home"]}
-'
-            """)
-         os.system(f"""
-         rm -rf {domain["home"]}
-         """)
+         helpers.execute(f'rm -rf {domain["home"]}', destination)
+
+      helpers.execute(f'rm -rf {domain["home"]}')

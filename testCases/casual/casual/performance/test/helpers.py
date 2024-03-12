@@ -7,6 +7,7 @@ from pathlib import Path
 import csv
 import tempfile
 from locust.env import Environment
+import subprocess
 
 beginning = 0
 end = 1
@@ -52,6 +53,20 @@ def retrieve_host( domain: str, user_config: list):
       
    raise SystemError( f"No user-config for domain {domain}")
 
-         
+
+def execute( command: str, host: str = "localhost" ):
+
+   if host == "localhost":
+      subprocess.Popen( command, shell=True)
+   else:
+      remote_command = f"ssh {host} '{command} > logs/console.log 2>&1 '"
+      subprocess.Popen( remote_command, shell=True)
+
+def scp( source: str, destination: str, recursive = False):
+
+   command = "scp -r" if recursive else "scp" 
+
+   os.system(f"{command} {source} {destination}")
+
 
 
