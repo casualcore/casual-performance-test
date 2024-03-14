@@ -115,6 +115,26 @@ def on_test_stop( configuration, environment):
    stop_domains( configuration, environment)
    #remove_domains( configuration, environment)
 
+def make_default_domain_env( domain: dict):
+   casual_log = domain["remote"]["casual_log"] if "casual_log" in domain["remote"] else "(error|warning|information)"
+   casual_home = domain["remote"]["casual_home"] if "casual_home" in domain["remote"] else "/opt/casual" 
+
+   with open( f"{domain['home']}/domain.env", 'w') as file:
+      file.write( f"""
+export CASUAL_HOME={casual_home}
+export PATH=$CASUAL_HOME/bin:$PATH 
+export LD_LIBRARY_PATH=$CASUAL_HOME/lib:$LD_LIBRARY_PATH
+
+# CASUAL_DOMAIN_HOME - this domain
+export CASUAL_DOMAIN_HOME={domain['home']}
+
+# Defines what will be logged.
+export CASUAL_LOG='{(casual_log)}'
+
+export CASUAL_LOG_PATH=$CASUAL_DOMAIN_HOME/logs/casual.log
+
+""")
+
 
 def make_base():
    location = tempfile.mkdtemp(dir="/var/tmp")
@@ -134,29 +154,14 @@ def setup_domains( configuration: dict, environment: Environment):
 
       for configuration_file in domain.get("files",[]):
          default_domain_env = False if configuration_file["filename"] == "domain.env" else default_domain_env
-         with open( f"{domain['home']}/{configuration_file['filename']}", 'w') as file:
+         filename = f"{domain['home']}/{configuration_file['filename']}"
+         os.makedirs( os.path.dirname( filename), exist_ok=True)
+         with open( filename, 'w') as file:
             file.write( configuration_file["content"])
             file.write( "\n")
 
-      casual_home = domain["remote"]["casual_home"] if "casual_home" in domain["remote"] else "/opt/casual" 
       if default_domain_env:
-         casual_log = domain["remote"]["casual_log"] if "casual_log" in domain["remote"] else "(error|warning|information)"
-         with open( f"{domain['home']}/domain.env", 'w') as file:
-            file.write( f"""
-export CASUAL_HOME={casual_home}
-export PATH=$CASUAL_HOME/bin:$PATH 
-export LD_LIBRARY_PATH=$CASUAL_HOME/lib:$LD_LIBRARY_PATH
-
-# CASUAL_DOMAIN_HOME - this domain
-export CASUAL_DOMAIN_HOME={domain['home']}
-
-# Defines what will be logged.
-export CASUAL_LOG='{(casual_log)}'
-
-export CASUAL_LOG_PATH=$CASUAL_DOMAIN_HOME/logs/casual.log
-
-""")
-            file.write( '\n')
+         make_default_domain_env( domain)
       else:
          # append correct CASUAL_DOMAIN_HOME
          with open( f"{domain['home']}/domain.env", 'a') as file:
