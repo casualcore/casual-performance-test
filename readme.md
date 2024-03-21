@@ -30,4 +30,6 @@ A config file for telegraf must be found on each machine.
 
 The output from locust can be visualized with `plot.py output1.zip output2.zip ... outputN.zip`
 
+The output from remote casual domains can be visualized with [`svcplot.py`](visualization/readme.md)
+
 No visualization for other metrics yet.
