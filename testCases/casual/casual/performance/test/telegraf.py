@@ -3,20 +3,23 @@ from pathlib import Path
 from locust.env import Environment
 from casual.performance.test import helpers
 
-def config( base: str, name: str, remote: dict):
+def config( base: str, name: str, domain: dict, host: dict):
 
     home = os.path.join( base, name)
-    casual_home = remote["casual_home"] if "casual_home" in remote else "/opt/casual" 
+    casual_home = domain["casual_home"] if "casual_home" in domain else "/opt/casual" 
     return {
             "name" : name,
             "home" : home,
-            "remote": remote,
+            "lookup" : {
+                "host": host,
+                "domain" : domain
+            },
             "casual_statistics" : False,
             "files" : 
             [
                {
-                  "filename" : "domain.env",
-                  "content" : f"""
+                    "filename" : "domain.env",
+                    "content" : f"""
 export CASUAL_HOME={casual_home}
 export PATH=$CASUAL_HOME/bin:$PATH 
 export LD_LIBRARY_PATH=$CASUAL_HOME/lib:$LD_LIBRARY_PATH
@@ -32,22 +35,22 @@ export CASUAL_LOG_PATH=$CASUAL_DOMAIN_HOME/logs/casual.log
 """
                },
                {
-                  "filename" : "configuration/domain.yaml",
-                  "content" : f"""
+                    "filename" : "configuration/domain.yaml",
+                    "content" : f"""
 domain:
   name: {name}
 
   executables:
 
     - alias: telegraf
-      path: {remote['binpath']}/telegraf 
+      path: {domain['binpath']}/telegraf 
       arguments: [ -config, configuration/telegraf.conf]
 
 """
-               },
-               {
-                  "filename" : "configuration/telegraf.conf",
-                  "content" : """
+                },
+                {
+                    "filename" : "configuration/telegraf.conf",
+                    "content" : """
 ###############################################################################
 #                            INPUT PLUGINS                                    #
 ###############################################################################
@@ -92,22 +95,19 @@ domain:
 
   data_format = "json"
 """
-               }
+                }
             ]
-         }
+        }
 
 def metrics( configuration: dict, environment: Environment):
-   
-   csv_prefix = environment.parsed_options.csv_prefix
 
-   for domain in configuration.get("domains", {}):
-      if 'remote' in domain and 'type' in domain['remote'] and domain['remote']['type'] == "telegraf":
-        if not environment.parsed_options.use_remote_nodes:
-          helpers.execute( f"cp {domain['home']}/logs/metrics.txt {csv_prefix}_{domain['name']}_telegraf.metrics.txt")
+    csv_prefix = environment.parsed_options.csv_prefix
 
-        else:
-          source = domain['remote']['user'] + "@" + domain['remote']['host'] + ":" + domain['home']
+    for domain in configuration.get("domains", {}):
+        if domain['lookup']['domain']['type'] == "telegraf":
+            if not environment.parsed_options.use_remote_nodes:
+                helpers.execute( f"cp {domain['home']}/logs/metrics.txt {csv_prefix}_{domain['name']}_telegraf.metrics.txt")
 
-          if source:
-            helpers.scp( f"{source}/logs/metrics.txt", f"{csv_prefix}_{domain['name']}_telegraf.metrics.txt")
-
+            else:
+                if source:= domain['lookup']['host']['user'] + "@" + domain['lookup']['host']['hostname'] + ":" + domain['home']:
+                    helpers.scp( f"{source}/logs/metrics.txt", f"{csv_prefix}_{domain['name']}_telegraf.metrics.txt")
