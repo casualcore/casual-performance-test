@@ -1,0 +1,28 @@
+domains:
+  - name: telegrafA
+    inbound-http-port: None
+    inbound-gateway-port: None
+    binpath : "/opt/homebrew/bin/"
+    casual_home: "/Users/hbergk/usr/local/casual"
+    type: telegraf
+
+  - name: domainX
+    inbound-http-port: 8201
+    inbound-gateway-port: 7070
+    casual_log: '.*'
+    casual_home: "/Users/hbergk/usr/local/casual"
+    type: casual
+
+  - name: telegrafB
+    inbound-http-port: None
+    inbound-gateway-port: None
+    binpath : "/opt/homebrew/bin/"
+    casual_home: "/Users/hbergk/usr/local/casual"
+    type: telegraf
+
+  - name: domainY
+    inbound-http-port: 8202
+    inbound-gateway-port: 7071
+    casual_log: '.*'
+    casual_home: "/Users/hbergk/usr/local/casual"
+    type: casual

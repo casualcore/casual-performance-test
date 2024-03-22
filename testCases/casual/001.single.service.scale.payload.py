@@ -6,10 +6,10 @@ from casual.performance.test import telegraf
 from casual.performance.test import casual
 from casual.performance.test import helpers
 from casual.performance.test import configuration
+from casual.performance.test import config
+
 
 import inspect
-
-import user_config
 
 ###########################################################################################################
 #
@@ -31,87 +31,90 @@ global_100K = base64.b64encode( bytes( 100 * 1024))
 
 
 class TestCase( FastHttpUser):
-   """ Single service scale payload """
+    """ Single service scale payload """
 
-   @task
-   def task1( self):
-      self.client.post(
-         name = "1B",
-         url = "/casual/example/echo",
-         headers = { "content-type": "application/casual-x-octet"},
-         data = global_1B)
+    @task
+    def task1( self):
+        self.client.post(
+            name = "1B",
+            url = "/casual/example/echo",
+            headers = { "content-type": "application/casual-x-octet"},
+            data = global_1B)
 
-   @task
-   def task2( self):
-      self.client.post(
-         name = "1K",
-         url = "/casual/example/echo",
-         headers = { "content-type": "application/casual-x-octet"},
-         data = global_1K)
+    @task
+    def task2( self):
+        self.client.post(
+            name = "1K",
+            url = "/casual/example/echo",
+            headers = { "content-type": "application/casual-x-octet"},
+            data = global_1K)
 
-   @task
-   def task3( self):
-      self.client.post(
-         name = "10K",
-         url = "/casual/example/echo",
-         headers = { "content-type": "application/casual-x-octet"},
-         data = global_10K)
+    @task
+    def task3( self):
+        self.client.post(
+            name = "10K",
+            url = "/casual/example/echo",
+            headers = { "content-type": "application/casual-x-octet"},
+            data = global_10K)
 
-   @task
-   def task4( self):
-      self.client.post(
-         name = "100K",
-         url = "/casual/example/echo",
-         headers = { "content-type": "application/casual-x-octet"},
-         data = global_100K)
+    @task
+    def task4( self):
+        self.client.post(
+            name = "100K",
+            url = "/casual/example/echo",
+            headers = { "content-type": "application/casual-x-octet"},
+            data = global_100K)
 
 def domainX( base: str, environment: dict):
-   """
-   domain definition for a testdomain
-   """
+    """
+    domain definition for a testdomain
+    """
 
-   # Use name of function as name of domain
-   name = inspect.currentframe().f_code.co_name
-   home = os.path.join( base, name)
+    # Use name of function as name of domain
+    name = inspect.currentframe().f_code.co_name
+    home = os.path.join( base, name)
 
-   config_domain_X = configuration.Configuration( name)
+    config_domain_X = configuration.Configuration( name)
 
-   return {
+    return {
             "name" : name,
             "home" : home,
-            "remote" : user_config.get( name),
+            "lookup" : {
+                "host": config.host( "hostA"),
+                "domain" : config.domain( name)
+            },
             "files" : 
             [
                 config_domain_X.configuration_file_entry()
             ],
-            "nginx_port" : user_config.port( name)
-         }
+            "nginx_port" : config.port( name)
+    }
 
 
 @events.test_start.add_listener
 def on_test_start( environment, **kwargs):
-   global starttime
-   global stored_configuration
+    global starttime
+    global stored_configuration
 
-   base = casual.make_base()
+    base = casual.make_base()
 
-   stored_configuration = {
-      "domains": 
-      [
-         telegraf.config( base, "telegrafA", user_config.get( "telegrafA")),
-         domainX( base, environment)
-      ]
-   }
+    stored_configuration = {
+        "domains": 
+        [
+            telegraf.config( base, "telegrafA", config.domain( "telegrafA"), config.host( "hostA")),
+            domainX( base, environment)
+        ]
+    }
 
-   casual.on_test_start( stored_configuration, environment)
-   starttime = helpers.write_start_information( stored_configuration, environment)
+    casual.on_test_start( stored_configuration, environment)
+    starttime = helpers.write_start_information( stored_configuration, environment)
 
 @events.test_stop.add_listener
 def on_test_stop( environment, **kwargs):
-   global starttime
-   global stored_configuration
+    global starttime
+    global stored_configuration
 
-   casual.on_test_stop( stored_configuration, environment)
+    casual.on_test_stop( stored_configuration, environment)
 
-   helpers.write_stop_information( stored_configuration, environment, starttime)
+    helpers.write_stop_information( stored_configuration, environment, starttime)
 
