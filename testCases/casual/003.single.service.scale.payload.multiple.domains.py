@@ -6,6 +6,8 @@ import os
 from casual.performance.test import telegraf
 from casual.performance.test import casual
 from casual.performance.test import helpers
+from casual.performance.test import configuration
+
 import inspect
 
 import time
@@ -17,7 +19,7 @@ import user_config
 # Global declarations needed in locust testfiles
 
 starttime=float()
-configuration={}
+stored_configuration={}
 
 @events.init_command_line_parser.add_listener
 def _(parser):
@@ -74,59 +76,18 @@ def domainX( base: str, environment: dict):
    name = inspect.currentframe().f_code.co_name
    home = os.path.join( base, name)
 
-   # Note the double ${{}} to escape f-string functionality
+   config_domain_X = configuration.Configuration( name, example_server = False)
+   config_domain_X.domain.gateway.outbound.groups.append("outbound").connections.append( 
+      user_config.get("domainY")["gateway_inbound_address"]
+    )
+
    return {
             "name" : name,
             "home" : home,
             "remote" : user_config.get( name),
             "files" : 
             [
-               {
-                  "filename" : "configuration/domain.yaml",
-                  "content" : f"""
-system:
-  resources:
-    - key: "rm-mockup"
-      server: "rm-proxy-casual-mockup"
-      xa_struct_name: "casual_mockup_xa_switch_static"
-      libraries:
-        - "casual-mockup-rm"
-      paths:
-        library:
-          - "${{CASUAL_HOME}}/lib"
-
-domain:
-  name: {name}
-
-  transaction:
-    resources:
-      - name: example-resource-server
-        key: rm-mockup
-        instances: 2
-
-  executables:
-    - alias: casual-http-inbound
-      path: ${{CASUAL_HOME}}/nginx/sbin/nginx
-      arguments: 
-        - "-c" 
-        - ${{CASUAL_DOMAIN_HOME}}/configuration/nginx.conf
-        - "-p"
-        - ${{CASUAL_DOMAIN_HOME}}
-
-    - alias: casual-event-service-log
-      path: ${{CASUAL_HOME}}/bin/casual-event-service-log
-      arguments: [ --file, logs/statistics.log ]
-      instances: 1
-
-  gateway:
-    outbound:
-      groups:
-        - alias: outbound
-          connections:
-            - address: {user_config.get("domainY")["gateway_inbound_address"]}
-
-"""
-               }
+                config_domain_X.configuration_file_entry()
             ],
             "nginx_port" : user_config.port( name)
          }
@@ -140,76 +101,31 @@ def domainY( base: str, environment: dict):
    name = inspect.currentframe().f_code.co_name
    home = os.path.join( base, name)
 
-   # Note the double ${{}} to escape f-string functionality
+   config_domain_Y = configuration.Configuration( name)
+   config_domain_Y.domain.gateway.inbound.groups.append("inbound").connections.append( 
+      user_config.get("domainY")["gateway_inbound_address"]
+    )
+
    return {
             "name" : name,
             "home" : home,
             "remote" : user_config.get( name),
             "files" : 
             [
-               {
-                  "filename" : "configuration/domain.yaml",
-                  "content" : f"""
-system:
-  resources:
-    - key: "rm-mockup"
-      server: "rm-proxy-casual-mockup"
-      xa_struct_name: "casual_mockup_xa_switch_static"
-      libraries:
-        - "casual-mockup-rm"
-      paths:
-        library:
-          - "${{CASUAL_HOME}}/lib"
-
-domain:
-  name: {name}
-
-  transaction:
-    resources:
-      - name: example-resource-server
-        key: rm-mockup
-        instances: 2
-
-  servers:
-    - alias: casual-example-server
-      path: ${{CASUAL_HOME}}/example/bin/casual-example-server
-      instances: 1
-
-  executables:
-    - alias: casual-http-inbound
-      path: ${{CASUAL_HOME}}/nginx/sbin/nginx
-      arguments: 
-        - "-c" 
-        - ${{CASUAL_DOMAIN_HOME}}/configuration/nginx.conf
-        - "-p"
-        - ${{CASUAL_DOMAIN_HOME}}
-
-    - alias: casual-event-service-log
-      path: ${{CASUAL_HOME}}/bin/casual-event-service-log
-      arguments: [ --file, logs/statistics.log ]
-      instances: 1
-
-  gateway:
-    inbound:
-      groups:
-        - alias: inbound
-          connections:
-            - address: {user_config.get("domainY")["gateway_inbound_address"]}
-
-"""
-               }
+                config_domain_Y.configuration_file_entry()
             ],
             "nginx_port" : user_config.port( name)
          }
 
+
 @events.test_start.add_listener
 def on_test_start( environment, **kwargs):
    global starttime
-   global configuration
+   global stored_configuration
 
    base = casual.make_base()
 
-   configuration = {
+   stored_configuration = {
       "domains": 
       [
          telegraf.config( base, "telegrafA", user_config.get( "telegrafA")),
@@ -219,17 +135,17 @@ def on_test_start( environment, **kwargs):
       ]
    }
 
-   casual.on_test_start( configuration, environment)
-   starttime = helpers.write_start_information( configuration, environment)
+   casual.on_test_start( stored_configuration, environment)
+   starttime = helpers.write_start_information( stored_configuration, environment)
 
    time.sleep(5)
 
 @events.test_stop.add_listener
 def on_test_stop( environment, **kwargs):
    global starttime
-   global configuration
+   global stored_configuration
 
-   casual.on_test_stop( configuration, environment)
+   casual.on_test_stop( stored_configuration, environment)
 
-   helpers.write_stop_information( configuration, environment, starttime)
+   helpers.write_stop_information( stored_configuration, environment, starttime)
       
