@@ -6,7 +6,7 @@ from casual.performance.test import telegraf
 from casual.performance.test import casual
 from casual.performance.test import helpers
 from casual.performance.test import configuration
-from casual.performance.test import config
+from casual.performance.test import lookup
 
 import inspect
 
@@ -52,14 +52,14 @@ def domainX( base: str, environment: dict):
             "name" : name,
             "home" : home,
             "lookup" : {
-                "host": config.host( "hostA"),
-                "domain" : config.domain( name)
+                "host": lookup.host( "hostA"),
+                "domain" : lookup.domain( name)
             },
             "files" : 
             [
                 config_domain_X.configuration_file_entry()
             ],
-            "nginx_port" : config.port( name)
+            "nginx_port" : lookup.port( name)
         }
 
 @events.test_start.add_listener
@@ -72,13 +72,16 @@ def on_test_start( environment, **kwargs):
     stored_configuration = {
         "domains": 
         [
-            telegraf.config( base, "telegrafA", config.domain( "telegrafA"), config.host( "hostA")),
+            telegraf.config( base, "telegrafA", lookup.domain( "telegrafA"), lookup.host( "hostA") ),
             domainX( base, environment)
         ]
     }
 
-    casual.on_test_start( stored_configuration, environment)
-    starttime = helpers.write_start_information( stored_configuration, environment)
+    # Set correct host in environment in order to get locust to do its job
+    environment.host = lookup.url_prefix( domain_name="domainX", host_alias="hostA")
+
+    casual.on_test_start( configuration, environment)
+    starttime = helpers.write_start_information( configuration, environment)
 
 @events.test_stop.add_listener
 def on_test_stop( environment, **kwargs):

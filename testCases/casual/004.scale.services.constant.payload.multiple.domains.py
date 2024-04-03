@@ -7,7 +7,7 @@ from casual.performance.test import telegraf
 from casual.performance.test import casual
 from casual.performance.test import helpers
 from casual.performance.test import configuration
-from casual.performance.test import config
+from casual.performance.test import lookup
 import inspect
 
 import time
@@ -49,21 +49,21 @@ def domainX( base: str, environment: dict):
 
     config_domain_X = configuration.Configuration( name, example_server = False)
     config_domain_X.domain.gateway.outbound.groups.append("outbound").connections.append( 
-          config.host("domainY")["gateway_inbound_address"]
+          lookup.host("domainY")["gateway_inbound_address"]
     )
 
     return {
             "name" : name,
             "home" : home,
             "lookup" : {
-                "host": config.host( "hostA"),
-                "domain" : config.domain( name)
+                "host": lookup.host( "hostA"),
+                "domain" : lookup.domain( name)
             },
             "files" : 
             [
                 config_domain_X.configuration_file_entry()
             ],
-            "nginx_port" : config.port( name)
+            "nginx_port" : lookup.port( name)
         }
 
 def domainY( base: str, environment: dict):
@@ -77,7 +77,7 @@ def domainY( base: str, environment: dict):
 
     config_domain_Y = configuration.Configuration( name)
     config_domain_Y.domain.gateway.inbound.groups.append("inbound").connections.append( 
-        config.host("domainY")["gateway_inbound_address"]
+        lookup.host("domainY")["gateway_inbound_address"]
     )
    
     config_domain_Y.domain.servers.find_first("casual-example-server").instances = 10
@@ -86,14 +86,14 @@ def domainY( base: str, environment: dict):
             "name" : name,
             "home" : home,
              "lookup" : {
-                "host": config.host( "hostB"),
-                "domain" : config.domain( name)
+                "host": lookup.host( "hostB"),
+                "domain" : lookup.domain( name)
             },
             "files" : 
             [
                 config_domain_Y.configuration_file_entry()
             ],
-            "nginx_port" : config.port( name)
+            "nginx_port" : lookup.port( name)
         }
 
 @events.test_start.add_listener
@@ -106,15 +106,19 @@ def on_test_start( environment, **kwargs):
     stored_configuration = {
         "domains": 
         [
-            telegraf.config( base, "telegrafA", config.domain( "telegrafA"),config.host( "hostA")),
-            telegraf.config( base, "telegrafB", config.domain( "telegrafB"),config.host( "hostB")),
+            telegraf.config( base, "telegrafA", lookup.domain( "telegrafA"), lookup.host( "hostA") ),
+            telegraf.config( base, "telegrafB", lookup.domain( "telegrafB"), lookup.host( "hostB") ),
+
             domainX( base, environment),
             domainY( base, environment)
         ]
     }
 
-    casual.on_test_start( stored_configuration, environment)
-    starttime = helpers.write_start_information( stored_configuration, environment)
+    # Set correct host in environment in order to get locust to do its job
+    environment.host = lookup.url_prefix( domain_name="domainX", host_alias="hostA")
+
+    casual.on_test_start( configuration, environment)
+    starttime = helpers.write_start_information( configuration, environment)
     time.sleep(5)
 
 @events.test_stop.add_listener
