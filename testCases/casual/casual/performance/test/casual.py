@@ -52,7 +52,8 @@ def metrics( configuration: dict, environment: dict):
                 helpers.execute( f"cp {domain['home']}/logs/statistics.log {csv_prefix}_{domain['name']}_statistics.log")
 
             else:
-                if source := domain['lookup']['host']['user'] + "@" + domain['lookup']['host']['hostname'] + ":" + domain['home']:
+                source = domain['lookup']['host']['user'] + "@" + domain['lookup']['host']['hostname'] + ":" + domain['home']
+                if source:
                     helpers.scp( f"{source}/logs/statistics.log", f"{csv_prefix}_{domain['name']}_statistics.log")
 
 def url_prefix( lookup: dict):

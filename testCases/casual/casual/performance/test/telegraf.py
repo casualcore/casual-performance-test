@@ -109,5 +109,6 @@ def metrics( configuration: dict, environment: Environment):
                 helpers.execute( f"cp {domain['home']}/logs/metrics.txt {csv_prefix}_{domain['name']}_telegraf.metrics.txt")
 
             else:
-                if source:= domain['lookup']['host']['user'] + "@" + domain['lookup']['host']['hostname'] + ":" + domain['home']:
+                source = domain['lookup']['host']['user'] + "@" + domain['lookup']['host']['hostname'] + ":" + domain['home']
+                if source:
                     helpers.scp( f"{source}/logs/metrics.txt", f"{csv_prefix}_{domain['name']}_telegraf.metrics.txt")

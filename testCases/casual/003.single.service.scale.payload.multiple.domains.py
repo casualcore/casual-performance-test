@@ -76,7 +76,7 @@ def domainX( base: str, environment: dict):
 
     config_domain_X = configuration.Configuration( name, example_server = False)
     config_domain_X.domain.gateway.outbound.groups.append("outbound").connections.append( 
-        config.domain("domainY")["gateway_inbound_address"]
+        lookup.inbound_gateway_address( "domainY", "hostB")
     )
 
     return {
@@ -104,7 +104,7 @@ def domainY( base: str, environment: dict):
 
     config_domain_Y = configuration.Configuration( name)
     config_domain_Y.domain.gateway.inbound.groups.append("inbound").connections.append( 
-        lookup.domain("domainY")["gateway_inbound_address"]
+        lookup.inbound_gateway_address( "domainY", "hostB")
     )
 
     return {
@@ -140,14 +140,11 @@ def on_test_start( environment, **kwargs):
         ]
     }
 
-    casual.on_test_start( stored_configuration, environment)
-    starttime = helpers.write_start_information( stored_configuration, environment)
-
     # Set correct host in environment in order to get locust to do its job
     environment.host = lookup.url_prefix( domain_name="domainX", host_alias="hostA")
 
-    casual.on_test_start( configuration, environment)
-    starttime = helpers.write_start_information( configuration, environment)
+    casual.on_test_start( stored_configuration, environment)
+    starttime = helpers.write_start_information( stored_configuration, environment)
 
     time.sleep(5)
 
