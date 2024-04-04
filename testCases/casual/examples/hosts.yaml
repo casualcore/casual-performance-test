@@ -1,0 +1,17 @@
+hosts:
+  develop:
+    - alias: hostA
+      user: thunder
+      hostname: localhost
+
+    - alias: hostB
+      user: sunshine
+      hostname: localhost
+  qa:
+    - alias: hostA
+      user: rain
+      hostname: tom.qa.example.com
+
+    - alias: hostB
+      user: snow
+      hostname: jerry.qa.example.com

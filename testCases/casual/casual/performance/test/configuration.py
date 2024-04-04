@@ -417,7 +417,7 @@ class QueueGroup( object):
     """
     alias: str
     queuebase: str
-    queues: QueueList[Queue] = field(default_factory=QueueList)
+    queues: QueueList = field(default_factory=QueueList)
 
 @dataclass
 class QueueGroupList( list):

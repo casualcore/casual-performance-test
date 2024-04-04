@@ -45,15 +45,6 @@ def write_stop_information( configuration: dict, environment: Environment, start
       writer = csv.DictWriter(csvfile, fieldnames=fieldnames, quoting=csv.QUOTE_MINIMAL)
       writer.writerow( { 'Id': starttime, 'Time' : now, 'Type': end, 'Version' : version, 'Commit' : commit, 'TestSuite' : testsuite } )
 
-def retrieve_host( domain: str, user_config: list):
-
-   for entry in user_config.get("config", []):
-      if domain == entry["domain"]:
-         return entry["host"]
-      
-   raise SystemError( f"No user-config for domain {domain}")
-
-
 def execute( command: str, host: str = "localhost" ):
 
    if host == "localhost":
