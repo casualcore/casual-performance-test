@@ -4,33 +4,33 @@ import os
 import tempfile
 import time
 import base64
-from locust.env import Environment
 from casual.performance.test import helpers
 from casual.performance.test import telegraf
 
 
-def metrics( configuration: dict, environment: dict):
+def url_prefix( lookup: dict):
+    prefix = f"http://{lookup['host']['hostname']}:{lookup['domain']['inbound-http-port']}"
+    return prefix
+
+def metrics( configuration: dict, csv_prefix: str):
     """
     This is used to fetch casual metrics from domains
     """
-
-    host = environment.host
-    csv_prefix = environment.parsed_options.csv_prefix
 
     for domain in configuration.get("domains", {}):
         if 'casual_statistics' in domain and domain['casual_statistics'] == False:
             continue
 
         domain_reply = requests.post(
-            url = host + "/.casual/domain/state",
+            url = url_prefix( domain['lookup']) + "/.casual/domain/state",
             headers = { "content-type": "application/json"}
         )
         service_reply = requests.post(
-            url = host + "/.casual/service/state",
+            url = url_prefix( domain['lookup']) + "/.casual/service/state",
             headers = { "content-type": "application/json"}
         )
         transaction_reply = requests.post(
-            url = host + "/.casual/transaction/state",
+            url = url_prefix( domain['lookup']) + "/.casual/transaction/state",
             headers = { "content-type": "application/json"}
         )
 
@@ -48,20 +48,10 @@ def metrics( configuration: dict, environment: dict):
             file.write( transaction_reply.text)
 
         if domain['lookup']['domain']['type'] == "casual":
-            if not environment.parsed_options.use_remote_nodes:
-                helpers.execute( f"cp {domain['home']}/logs/statistics.log {csv_prefix}_{domain['name']}_statistics.log")
-
-            else:
-                source = domain['lookup']['host']['user'] + "@" + domain['lookup']['host']['hostname'] + ":" + domain['home']
-                if source:
-                    helpers.scp( f"{source}/logs/statistics.log", f"{csv_prefix}_{domain['name']}_statistics.log")
-
-def url_prefix( lookup: dict):
-    prefix = f"http://{lookup['host']['hostname']}:{lookup['domain']['inbound-http-port']}"
-    return prefix
+            helpers.copy_from_domain('logs/statistics.log', f"{csv_prefix}_{domain['name']}_statistics.log", domain)
 
 
-def reset_metrics( configuration, environment):
+def reset_metrics( configuration):
     """
     This is used to reset casual metrics in domains
     """
@@ -72,7 +62,7 @@ def reset_metrics( configuration, environment):
                 headers = { "content-type": "application/json"}
             )
 
-def information( configuration, environment):
+def information( configuration):
     for domain in configuration.get("domains", {}): 
         if domain['lookup']['domain']['type'] == "casual":
             path = url_prefix( domain['lookup']) + "/.casual/domain/state"
@@ -92,13 +82,32 @@ def information( configuration, environment):
                 "commit": reply["result"]["version"]["commit"]
             }
 
+def scale_queue_forward(configuration, domain_name, alias, instances):
+    for domain in configuration.get("domains",{}):
+        if domain['lookup']['domain']['type'] == "casual":
+            if domain['name'] == domain_name:
+                reply = requests.post(
+                    url = url_prefix( domain['lookup']) + "/.casual/queue/forward/scale/aliases",
+                    json = { "aliases": [ { "name": alias, "instances": instances}]},
+                    headers = { "content-type": "application/json"}
+                )
 
-def on_test_start( configuration: dict, environment: Environment):
 
-    setup_domains( configuration, environment)
-    start_domains( configuration, environment)
+def scale_instance(configuration, domain_name, alias, instances):
+    for domain in configuration.get("domains",{}):
+        if domain['lookup']['domain']['type'] == "casual":
+            if domain['name'] == domain_name:
+                reply = requests.post(
+                    url = url_prefix( domain['lookup']) + "/.casual/domain/scale/instances",
+                    json = { "aliases": [ { "name": alias, "instances": instances}]},
+                    headers = { "content-type": "application/json"}
+                )
 
-    information( configuration, environment)
+
+def on_test_start( configuration: dict):
+    setup_domains( configuration)
+    start_domains( configuration)
+    information( configuration)
 
     for domain in configuration.get("domains", {}):
         if domain['lookup']['domain']['type'] == "casual":
@@ -112,16 +121,15 @@ def on_test_start( configuration: dict, environment: Environment):
                 )
 
     # Reset casual metrics
-    reset_metrics( configuration, environment)
+    reset_metrics( configuration)
 
-def on_test_stop( configuration, environment):
 
-    metrics( configuration, environment)
-    # Get telegraf metrics
-    telegraf.metrics( configuration, environment)
- 
-    stop_domains( configuration, environment)
-    #remove_domains( configuration, environment)
+def on_test_stop( configuration, csv_prefix: str):
+    metrics( configuration, csv_prefix)
+    telegraf.metrics( configuration, csv_prefix)
+    stop_domains( configuration)
+    # remove_domains( configuration, environment)
+
 
 def make_default_domain_env( domain: dict):
 
@@ -150,14 +158,17 @@ def make_base():
     print(f"BASEDIR for domains:[{location}]")
     return location
 
+
 def make_home( home: str):
     os.makedirs( os.path.join( home, "configuration" ))
     os.makedirs( os.path.join( home, "logs" ))
 
+
 def address( lookup: dict):
     return lookup['host']['user'] + "@" + lookup['host']['hostname']
 
-def setup_domains( configuration: dict, environment: Environment):
+
+def setup_domains( configuration: dict):
    
     for domain in configuration.get("domains", {}):
         make_home( domain['home'])
@@ -237,44 +248,42 @@ http {{
 
         Path( f"{domain['home']}/configuration/mime.types").touch()
 
-        if environment.parsed_options.use_remote_nodes:
-            destination = address( domain['lookup'])
-            helpers.execute(f"""mkdir -p {domain['home']}""", destination)
-            helpers.scp( f"{domain['home']}/*", f"{destination}:{domain['home']}", recursive=True)
+        if helpers.is_remote(domain):
+            helpers.execute(f'mkdir -p {domain["home"]}', address(domain['lookup']))
+            helpers.copy_to_domain(f"{domain['home']}/*", '', domain, recursive=True)
 
     return configuration
 
-def start_domains( configuration: dict, environment: Environment):
+def start_domains( configuration: dict):
 
     for domain in configuration.get("domains", {}):
-        if not environment.parsed_options.use_remote_nodes:
+        if not helpers.is_remote(domain):
             destination = "localhost"
         else:
             destination = address( domain['lookup'])
 
-        helpers.execute(f'cd {domain["home"]} && . domain.env && casual domain --boot configuration/domain.yaml', 
+        helpers.execute(f'cd {domain["home"]} && . {domain["home"]}/domain.env && casual domain --boot configuration/domain.yaml', 
             destination)
 
-
     time.sleep(1.0)
 
-def stop_domains( configuration: dict, environment: Environment):
+def stop_domains( configuration: dict):
 
     for domain in configuration.get("domains", {}):
-        if not environment.parsed_options.use_remote_nodes:
+        if not helpers.is_remote(domain):
             destination = "localhost"
         else:
             destination = address( domain['lookup'])
 
-        helpers.execute(f'cd {domain["home"]} && . domain.env && casual domain --shutdown', destination)
+        helpers.execute(f'cd {domain["home"]} && . {domain["home"]}/domain.env && casual domain --shutdown', destination)
 
     time.sleep(1.0)
 
 
-def remove_domains( configuration: dict, environment: Environment):
+def remove_domains( configuration: dict):
 
     for domain in configuration.get("domains", {}):
-        if environment.parsed_options.use_remote_nodes:
+        if helpers.is_remote(domain):
             destination = address( domain['lookup'])
             helpers.execute(f'rm -rf {domain["home"]}', destination)
 

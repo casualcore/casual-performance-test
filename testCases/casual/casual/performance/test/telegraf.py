@@ -1,6 +1,4 @@
 import os
-from pathlib import Path
-from locust.env import Environment
 from casual.performance.test import helpers
 
 def config( base: str, name: str, domain: dict, host: dict):
@@ -99,16 +97,8 @@ domain:
             ]
         }
 
-def metrics( configuration: dict, environment: Environment):
-
-    csv_prefix = environment.parsed_options.csv_prefix
+def metrics( configuration: dict, csv_prefix: str):
 
     for domain in configuration.get("domains", {}):
         if domain['lookup']['domain']['type'] == "telegraf":
-            if not environment.parsed_options.use_remote_nodes:
-                helpers.execute( f"cp {domain['home']}/logs/metrics.txt {csv_prefix}_{domain['name']}_telegraf.metrics.txt")
-
-            else:
-                source = domain['lookup']['host']['user'] + "@" + domain['lookup']['host']['hostname'] + ":" + domain['home']
-                if source:
-                    helpers.scp( f"{source}/logs/metrics.txt", f"{csv_prefix}_{domain['name']}_telegraf.metrics.txt")
+            helpers.copy_from_domain('logs/metrics.txt', f"{csv_prefix}_{domain['name']}_telegraf.metrics.txt", domain)
