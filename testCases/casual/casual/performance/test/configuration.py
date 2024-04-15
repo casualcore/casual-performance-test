@@ -333,7 +333,7 @@ class ForwardQueueService(object):
         self.source = source
         self.target = ServiceTarget(target)
         self.instances = instances
-        self.reply = Reply( queue, delay) if queue else {}
+        self.reply = Reply( queue, delay) if queue else None
 
 
 @dataclass
@@ -535,6 +535,11 @@ class System( object):
 # configuration configuration #
 ###############################
 
+def non_null_vars(x):
+    v = vars(x)
+    return { key: v[key] for key in v if v[key] is not None}
+
+
 class Configuration(object):
     """
     Main configuration object
@@ -544,7 +549,7 @@ class Configuration(object):
         self.system = System()
     
     def as_json(self):
-        return json.dumps( self, indent=2, default=vars )
+        return json.dumps( self, indent=2, default=non_null_vars)
     
     def as_yaml(self):
         model = json.loads( str(self.as_json()))
@@ -566,4 +571,5 @@ if __name__ == '__main__':
 
     config_domain_X = Configuration( "example")
     config_domain_X.domain.services.append("test-service")
+    config_domain_X.domain.queue.forward.groups.append("test").services.append(source="sune", target="mangs")
     print(config_domain_X.as_yaml())

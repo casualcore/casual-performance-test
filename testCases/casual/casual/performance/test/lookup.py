@@ -53,6 +53,10 @@ def port(name):
     return domain(name)["inbound-http-port"]
 
 
+def inbound_gateway_port(domain_name):
+    return domain(domain_name)['inbound-gateway-port']
+
+
 def inbound_gateway_address(domain_name, host_alias):
     return (
         f"{host(host_alias)['hostname']}:{domain(domain_name)['inbound-gateway-port']}"

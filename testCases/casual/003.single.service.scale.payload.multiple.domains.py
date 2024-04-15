@@ -1,3 +1,4 @@
+from pathlib import Path
 from locust import FastHttpUser, task, events
 import base64
 import requests
@@ -19,10 +20,6 @@ import time
 starttime=float()
 stored_configuration={}
 
-@events.init_command_line_parser.add_listener
-def _(parser):
-    parser.add_argument("--use-remote-nodes", default=False, action='store_true', help="Remote node mode")
-
 ###########################################################################################################
 
 global_1B = base64.b64encode( bytes( 1))
@@ -36,32 +33,32 @@ class TestCase( FastHttpUser):
     @task
     def task1( self):
         self.client.post(
+            "/casual/example/echo",
             name = "1B",
-            url = "/casual/example/echo",
             headers = { "content-type": "application/casual-x-octet"},
             data = global_1B)
 
     @task
     def task2( self):
         self.client.post(
+            "/casual/example/echo",
             name = "1K",
-            url = "/casual/example/echo",
             headers = { "content-type": "application/casual-x-octet"},
             data = global_1K)
 
     @task
     def task3( self):
         self.client.post(
+            "/casual/example/echo",
             name = "10K",
-            url = "/casual/example/echo",
             headers = { "content-type": "application/casual-x-octet"},
             data = global_10K)
 
     @task
     def task4( self):
         self.client.post(
+            "/casual/example/echo",
             name = "100K",
-            url = "/casual/example/echo",
             headers = { "content-type": "application/casual-x-octet"},
             data = global_100K)
 
@@ -142,9 +139,11 @@ def on_test_start( environment, **kwargs):
 
     # Set correct host in environment in order to get locust to do its job
     environment.host = lookup.url_prefix( domain_name="domainX", host_alias="hostA")
+    csv_prefix = environment.parsed_options.csv_prefix
+    testsuite = Path( environment.parsed_options.locustfile).stem
 
-    casual.on_test_start( stored_configuration, environment)
-    starttime = helpers.write_start_information( stored_configuration, environment)
+    casual.on_test_start( stored_configuration)
+    starttime = helpers.write_start_information( stored_configuration, csv_prefix, testsuite)
 
     time.sleep(5)
 
@@ -153,7 +152,9 @@ def on_test_stop( environment, **kwargs):
     global starttime
     global stored_configuration
 
-    casual.on_test_stop( stored_configuration, environment)
+    csv_prefix = environment.parsed_options.csv_prefix
+    testsuite = Path( environment.parsed_options.locustfile).stem
 
-    helpers.write_stop_information( stored_configuration, environment, starttime)
+    casual.on_test_stop( stored_configuration, csv_prefix)
+    helpers.write_stop_information( stored_configuration, csv_prefix, testsuite, starttime)
       
