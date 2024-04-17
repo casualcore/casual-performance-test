@@ -1,21 +1,18 @@
-import os
-from pathlib import Path
-from casual.performance.test import casual
-from casual.performance.test import configuration
-from casual.performance.test import helpers
-from casual.performance.test import lookup
-from casual.performance.test import telegraf
-import inspect
-import time
 import argparse
+import inspect
+import os
+import time
+from pathlib import Path
 
+from casual.performance.test import (casual, configuration, helpers, lookup,
+                                     telegraf)
 
 starttime = float()
 stored_configuration = {}
 testsuite = Path(__file__).stem
 
 
-def domainX(base: str, host: str):
+def domainX(base: str, host_alias: str):
     """
     domain definition for a testdomain
     """
@@ -25,9 +22,6 @@ def domainX(base: str, host: str):
     home = os.path.join(base, name)
 
     config_domain_X = configuration.Configuration( name)
-
-    # gateway
-    # config_domain_X.domain.gateway.outbound.groups.append('jca-outbound').connections.append('sadbs1oscc2:7772')
 
     # queue
     config_domain_X.domain.queue.groups.append('test007').queues.append('test007.q1')
@@ -45,10 +39,10 @@ def domainX(base: str, host: str):
             "name" : name,
             "home" : home,
             "lookup" : {
-                "host": lookup.host( host),
+                "host": lookup.host( host_alias),
                 "domain" : lookup.domain( name)
             },
-            "nginx_port" : lookup.port( name),
+            "nginx_port" : lookup.inbound_http_port( name),
             "files" : 
             [
                 config_domain_X.configuration_file_entry(),
@@ -71,26 +65,42 @@ def test_setup(csv_prefix: str):
     global starttime
     global stored_configuration
 
-    base = casual.make_base()
+    base = helpers.make_base()
 
     stored_configuration = {
         "domains":
         [
-            telegraf.config( base, "telegrafA", lookup.domain( "telegrafA"), lookup.host( "hostA") ),
+            telegraf.config( base, "telegrafA", "hostA"),
             domainX(base, "hostA")
         ]
     }
 
-    casual.on_test_start(stored_configuration)
-    starttime = helpers.write_start_information(stored_configuration, csv_prefix, testsuite)
+    helpers.on_test_start( stored_configuration)
+    starttime = helpers.write_start_information( csv_prefix, testsuite)
 
 
 def test_stop(csv_prefix):
     global starttime
     global stored_configuration
 
-    casual.on_test_stop(stored_configuration, csv_prefix)
-    helpers.write_stop_information(stored_configuration, csv_prefix, testsuite, starttime)
+    helpers.on_test_stop( stored_configuration, csv_prefix)
+    helpers.write_stop_information( csv_prefix, testsuite, starttime)
+
+
+def test_stage(instances: int, stage_time: float):
+    dX = helpers.get_domain(stored_configuration, "domainX")
+    
+    # Fill queue
+    casual.scale_queue_forward(dX, "test007.q1", 0)
+    casual.scale_instance(dX, "casual-example-server", 0)
+    casual.scale_instance(dX, "prepare-queue", 1)
+    time.sleep(stage_time / 2.0)
+
+    # Process queue
+    casual.scale_instance(dX, "prepare-queue", 0)
+    casual.scale_instance(dX, "casual-example-server", instances)
+    casual.scale_queue_forward(dX, "test007.q1", instances)
+    time.sleep(stage_time / 2.0)
 
 
 def main():
@@ -103,40 +113,12 @@ def main():
 
     # Run test here
     print("Test starting.")
-    stage_time = float(arguments.run_time) / 8
-    time.sleep(stage_time)
-
-    casual.scale_instance(stored_configuration, "domainX", "prepare-queue", 0)
-    casual.scale_instance(stored_configuration, "domainX", "casual-example-server", 1)
-    casual.scale_queue_forward(stored_configuration, "domainX", "test007.q1", 1)
-    time.sleep(stage_time)
-
-    casual.scale_queue_forward(stored_configuration, "domainX", "test007.q1", 0)
-    casual.scale_instance(stored_configuration, "domainX", "prepare-queue", 1)
-    time.sleep(stage_time)
-
-    casual.scale_instance(stored_configuration, "domainX", "prepare-queue", 0)
-    casual.scale_instance(stored_configuration, "domainX", "casual-example-server", 2)
-    casual.scale_queue_forward(stored_configuration, "domainX", "test007.q1", 2)
-    time.sleep(stage_time)
-
-    casual.scale_queue_forward(stored_configuration, "domainX", "test007.q1", 0)
-    casual.scale_instance(stored_configuration, "domainX", "prepare-queue", 1)
-    time.sleep(stage_time)
-
-    casual.scale_instance(stored_configuration, "domainX", "prepare-queue", 0)
-    casual.scale_instance(stored_configuration, "domainX", "casual-example-server", 4)
-    casual.scale_queue_forward(stored_configuration, "domainX", "test007.q1", 4)
-    time.sleep(stage_time)
-
-    casual.scale_queue_forward(stored_configuration, "domainX", "test007.q1", 0)
-    casual.scale_instance(stored_configuration, "domainX", "prepare-queue", 1)
-    time.sleep(stage_time)
-
-    casual.scale_instance(stored_configuration, "domainX", "prepare-queue", 0)
-    casual.scale_instance(stored_configuration, "domainX", "casual-example-server", 8)
-    casual.scale_queue_forward(stored_configuration, "domainX", "test007.q1", 8)
-    time.sleep(stage_time)
+    stage_time = float(arguments.run_time) / 4
+    
+    test_stage(1, stage_time)
+    test_stage(2, stage_time)
+    test_stage(4, stage_time)
+    test_stage(8, stage_time)
 
     test_stop(arguments.csv)
 
