@@ -24,6 +24,10 @@ with open(domain_config_file, "r") as file:
     model["domains"] = yaml.safe_load(file)["domains"]
 
 
+def domains():
+    return model["domains"]
+
+
 def domain(name):
 
     for entry in model["domains"]:
@@ -49,7 +53,7 @@ def url_prefix(domain_name, host_alias):
     return f"http://{host(host_alias)['hostname']}:{domain(domain_name)['inbound-http-port']}"
 
 
-def port(name):
+def inbound_http_port(name):
     return domain(name)["inbound-http-port"]
 
 

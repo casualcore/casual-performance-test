@@ -1,15 +1,16 @@
 import os
-from casual.performance.test import helpers
+from casual.performance.test import casual, helpers, lookup
 
-def config( base: str, name: str, domain: dict, host: dict):
+def config( base: str, name: str, host_alias: str):
 
     home = os.path.join( base, name)
+    domain = lookup.domain(name)
     casual_home = domain["casual_home"] if "casual_home" in domain else "/opt/casual" 
     return {
             "name" : name,
             "home" : home,
             "lookup" : {
-                "host": host,
+                "host": lookup.host(host_alias),
                 "domain" : domain
             },
             "casual_statistics" : False,
@@ -97,8 +98,30 @@ domain:
             ]
         }
 
-def metrics( configuration: dict, csv_prefix: str):
 
-    for domain in configuration.get("domains", {}):
-        if domain['lookup']['domain']['type'] == "telegraf":
-            helpers.copy_from_domain('logs/metrics.txt', f"{csv_prefix}_{domain['name']}_telegraf.metrics.txt", domain)
+def metrics( domain: dict, csv_prefix: str):
+    helpers.copy_from_domain('logs/metrics.txt', f"{csv_prefix}_{domain['name']}_telegraf.metrics.txt", domain)
+
+
+def information( domain: dict):
+    pass
+
+
+def warmup( domain: dict):
+    pass
+
+
+def reset_metrics( domain: dict):
+    pass
+
+
+def setup_domain( domain: dict):
+    casual.setup_domain( domain)
+
+
+def start_domain( domain: dict):
+    casual.start_domain( domain)
+
+
+def stop_domain( domain: dict):
+    casual.stop_domain( domain)

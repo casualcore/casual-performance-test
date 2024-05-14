@@ -1,16 +1,95 @@
-import os
-import time
 import csv
+import importlib
+import os
 import subprocess
+import tempfile
+import time
 
 beginning = 0
 end = 1
+
+domain_type_modules = {
+    'casual': importlib.import_module('casual.performance.test.casual'),
+    'telegraf': importlib.import_module('casual.performance.test.telegraf'),
+    'jca': importlib.import_module('casual.performance.test.jca')
+}
+
+
+def has_name(name: str):
+    return lambda x: x['name'] == name
+
+
+def get_domain(configuration: dict, name: str):
+    return next( filter( has_name(name), configuration.get("domains", {})), None)
+
+
+def call_function(fn_name: str, domain: dict, **kwargs):
+    domain_type = domain['lookup']['domain']['type']
+    module = domain_type_modules[domain_type]
+    fn = getattr(module, fn_name)
+    return fn(domain, **kwargs)
+
 
 def is_remote( domain: dict):
     return domain['lookup']['host']['hostname'] != 'localhost'
 
 
-def write_start_information( configuration: dict, csv_prefix: str, testsuite:str):
+def make_base():
+    location = tempfile.mkdtemp(dir="/var/tmp")
+    print(f"BASEDIR for domains:[{location}]")
+    return location
+
+
+def metrics(configuration: dict, csv_prefix: str):
+    for domain in configuration.get("domains", {}):
+        call_function('metrics', domain, csv_prefix=csv_prefix)
+
+
+def information(configuration: dict):
+    for domain in configuration.get("domains", {}):
+        call_function('information', domain)
+
+
+def setup_domains(configuration: dict):
+    for domain in configuration.get("domains", {}):
+        call_function('setup_domain', domain)
+    
+
+def start_domains(configuration: dict):
+    for domain in configuration.get("domains", {}):
+        call_function('start_domain', domain)
+
+
+def warmup(configuration: dict):
+    for domain in configuration.get("domains", {}):
+        call_function('warmup', domain)
+
+
+def stop_domains(configuration: dict):
+    for domain in configuration.get("domains", {}):
+        call_function('stop_domain', domain)
+
+
+def reset_metrics(configuration: dict):
+    for domain in configuration.get("domains", {}):
+        call_function('reset_metrics', domain)
+
+
+def on_test_start(configuration: dict):
+    setup_domains( configuration)
+    start_domains( configuration)
+    information( configuration)
+    warmup( configuration)
+    reset_metrics( configuration)
+
+
+def on_test_stop(configuration: dict, csv_prefix: str):
+    metrics( configuration, csv_prefix)
+    stop_domains( configuration)
+    # remove_domains( configuration)
+
+
+def write_start_information( csv_prefix: str, testsuite:str):
     version = "test"
     commit = "test"
     now = time.time()
@@ -25,7 +104,7 @@ def write_start_information( configuration: dict, csv_prefix: str, testsuite:str
     return now
 
 
-def write_stop_information( configuration: dict, csv_prefix: str, testsuite: str, starttime):
+def write_stop_information( csv_prefix: str, testsuite: str, starttime):
     version = "" 
     commit = "" 
     now = time.time()

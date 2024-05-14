@@ -1,16 +1,11 @@
-from pathlib import Path
-from locust import FastHttpUser, task, events
 import base64
-import os
-
-from casual.performance.test import telegraf
-from casual.performance.test import casual
-from casual.performance.test import helpers
-from casual.performance.test import configuration
-from casual.performance.test import lookup
 import inspect
+import os
+from pathlib import Path
 
-import time
+from casual.performance.test import configuration, helpers, lookup, telegraf
+from locust import FastHttpUser, events, task
+
 ###########################################################################################################
 #
 # Global declarations needed in locust testfiles
@@ -34,7 +29,7 @@ class TestCase( FastHttpUser):
             data = global_10K)
 
 
-def domainX( base: str, environment: dict):
+def domainX( base: str, host_alias: str):
     """
     domain definition for a testdomain
     """
@@ -52,17 +47,17 @@ def domainX( base: str, environment: dict):
             "name" : name,
             "home" : home,
             "lookup" : {
-                "host": lookup.host( "hostA"),
+                "host": lookup.host( host_alias),
                 "domain" : lookup.domain( name)
             },
             "files" : 
             [
                 config_domain_X.configuration_file_entry()
             ],
-            "nginx_port" : lookup.port( name)
+            "nginx_port" : lookup.inbound_http_port( name)
         }
 
-def domainY( base: str, environment: dict):
+def domainY( base: str, host_alias: str):
     """
     domain definition for a testdomain
     """
@@ -73,7 +68,7 @@ def domainY( base: str, environment: dict):
 
     config_domain_Y = configuration.Configuration( name)
     config_domain_Y.domain.gateway.inbound.groups.append("inbound").connections.append( 
-        lookup.inbound_gateway_address( "domainY", "hostB")
+        lookup.inbound_gateway_address( "domainY", host_alias)
     )
    
     config_domain_Y.domain.servers.find_first("casual-example-server").instances = 10
@@ -82,14 +77,14 @@ def domainY( base: str, environment: dict):
             "name" : name,
             "home" : home,
              "lookup" : {
-                "host": lookup.host( "hostB"),
+                "host": lookup.host( host_alias),
                 "domain" : lookup.domain( name)
             },
             "files" : 
             [
                 config_domain_Y.configuration_file_entry()
             ],
-            "nginx_port" : lookup.port( name)
+            "nginx_port" : lookup.inbound_http_port( name)
         }
 
 @events.test_start.add_listener
@@ -97,16 +92,16 @@ def on_test_start( environment, **kwargs):
     global starttime
     global stored_configuration
 
-    base = casual.make_base()
+    base = helpers.make_base()
 
     stored_configuration = {
         "domains": 
         [
-            telegraf.config( base, "telegrafA", lookup.domain( "telegrafA"), lookup.host( "hostA") ),
-            telegraf.config( base, "telegrafB", lookup.domain( "telegrafB"), lookup.host( "hostB") ),
+            telegraf.config( base, "telegrafA", "hostA"),
+            telegraf.config( base, "telegrafB", "hostB"),
 
-            domainX( base, environment),
-            domainY( base, environment)
+            domainX( base, "hostA"),
+            domainY( base, "hostB")
         ]
     }
 
@@ -115,9 +110,9 @@ def on_test_start( environment, **kwargs):
     csv_prefix = environment.parsed_options.csv_prefix
     testsuite = Path( environment.parsed_options.locustfile).stem
 
-    casual.on_test_start( stored_configuration)
-    starttime = helpers.write_start_information( stored_configuration, csv_prefix, testsuite)
-    time.sleep(5)
+    helpers.on_test_start( stored_configuration)
+    starttime = helpers.write_start_information( csv_prefix, testsuite)
+
 
 @events.test_stop.add_listener
 def on_test_stop( environment, **kwargs):
@@ -127,5 +122,5 @@ def on_test_stop( environment, **kwargs):
     csv_prefix = environment.parsed_options.csv_prefix
     testsuite = Path( environment.parsed_options.locustfile).stem
 
-    casual.on_test_stop( stored_configuration, csv_prefix)
-    helpers.write_stop_information( stored_configuration, csv_prefix, testsuite, starttime)
+    helpers.on_test_stop( stored_configuration, csv_prefix)
+    helpers.write_stop_information( csv_prefix, testsuite, starttime)

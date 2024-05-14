@@ -570,6 +570,6 @@ class Configuration(object):
 if __name__ == '__main__':    
 
     config_domain_X = Configuration( "example")
-    config_domain_X.domain.services.append("test-service")
+    config_domain_X.domain.services.append("test-service").routes.extend(['nisse', 'hult'])
     config_domain_X.domain.queue.forward.groups.append("test").services.append(source="sune", target="mangs")
     print(config_domain_X.as_yaml())

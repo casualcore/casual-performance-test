@@ -1,13 +1,21 @@
-from locust import FastHttpUser, task, events
 import base64
-import requests
+import inspect
 import os
+from pathlib import Path
 
-global_host2 = "host2"
-global_host3 = "host3"
-global_uri = "http://{host}:8205".format(host=global_host2)
-global_user2 = "cas205"
-global_user3 = "cas-jca305"
+from casual.performance.test import (configuration, helpers, jca, lookup,
+                                     telegraf)
+from locust import FastHttpUser, events, task
+
+###########################################################################################################
+#
+# Global declarations needed in locust testfiles
+
+starttime=float()
+stored_configuration={}
+
+###########################################################################################################
+
 global_service = "javaEcho"
 global_1B = base64.b64encode( bytes( 1))
 global_1K = base64.b64encode( bytes( 1 * 1024))
@@ -15,52 +23,105 @@ global_10K = base64.b64encode( bytes( 10 * 1024))
 global_100K = base64.b64encode( bytes( 100 * 1024))
 
 class TestCase( FastHttpUser):
-   """ Single service scale payload casual->jca """
+    """ Single service scale payload casual->jca """
 
-   @task
-   def task1( self):
-      self.client.post("/casual/" + global_service,
-         name = "1B",
-         headers = { "content-type": "application/casual-x-octet"},
-         data = global_1B)
+    @task
+    def task1( self):
+        self.client.post(
+            "/" + global_service,
+            name = "1B",
+            headers = { "content-type": "application/casual-x-octet"},
+            data = global_1B)
 
-   @task
-   def task2( self):
-      self.client.post("/casual/" + global_service,
-         name = "1K",
-         headers = { "content-type": "application/casual-x-octet"},
-         data = global_1K)
+    @task
+    def task2( self):
+        self.client.post(
+            "/" + global_service,
+            name = "1K",
+            headers = { "content-type": "application/casual-x-octet"},
+            data = global_1K)
 
-   @task
-   def task3( self):
-      self.client.post("/casual/" + global_service,
-         name = "10K",
-         headers = { "content-type": "application/casual-x-octet"},
-         data = global_10K)
+    @task
+    def task3( self):
+        self.client.post(
+            "/" + global_service,
+            name = "10K",
+            headers = { "content-type": "application/casual-x-octet"},
+            data = global_10K)
 
-   @task
-   def task4( self):
-      self.client.post("/casual/" + global_service,
-         name = "100K",
-         headers = { "content-type": "application/casual-x-octet"},
-         data = global_100K)
+    @task
+    def task4( self):
+        self.client.post(
+            "/" + global_service,
+            name = "100K",
+            headers = { "content-type": "application/casual-x-octet"},
+            data = global_100K)
+
+
+def domainX( base: str, host_alias: str):
+    """
+    domain definition for a testdomain
+    """
+
+    # Use name of function as name of domain
+    name = inspect.currentframe().f_code.co_name
+    home = os.path.join( base, name)
+
+    config_domain_X = configuration.Configuration( name)
+    config_domain_X.domain.gateway.outbound.groups.append("jca-outbound").connections.append(
+       lookup.inbound_gateway_address("jca02", "hostA")
+    )
+
+    return {
+            "name" : name,
+            "home" : home,
+            "lookup" : {
+                "host": lookup.host( host_alias),
+                "domain" : lookup.domain( name)
+            },
+            "files" : 
+            [
+                config_domain_X.configuration_file_entry()
+            ],
+            "nginx_port" : lookup.inbound_http_port( name)
+    }
+
 
 @events.test_start.add_listener
 def on_test_start( environment, **kwargs):
-   print( "Test start")
-   # Warm up
-   for i in range( 10):
-     requests.post(
-         url = global_uri + "/casual/" + global_service,
-         headers = { "content-type": "application/casual-x-octet"},
-         data = global_1K)
-   
-   os.system("ssh {user}@{host} 'nohup telegraf -config telegraf.conf &>/dev/null &'".format(user=global_user2, host=global_host2))
-   os.system("ssh {user}@{host} 'nohup telegraf -config telegraf.conf &>/dev/null &'".format(user=global_user3, host=global_host3))
+    global starttime
+    global stored_configuration
+
+    base = helpers.make_base()
+
+    stored_configuration = {
+        "domains": 
+        [
+            telegraf.config( base, "telegrafA", "hostA"),
+            telegraf.config( base, "telegrafB", "hostB"),
+            domainX( base, "hostB"),
+            jca.config("jca02", "hostA")
+        ]
+    }
+
+    # Set correct host in environment in order to get locust to do its job
+    environment.host = lookup.url_prefix( domain_name="domainX", host_alias="hostB")
+
+    csv_prefix = environment.parsed_options.csv_prefix
+    testsuite = Path( environment.parsed_options.locustfile).stem
+
+    helpers.on_test_start( stored_configuration)
+    starttime = helpers.write_start_information( csv_prefix, testsuite)
+
 
 @events.test_stop.add_listener
 def on_test_stop( environment, **kwargs):
-   os.system( "ssh {user}@{host} kill $(ssh {user}@{host} ps | grep telegraf | awk '{{print $1}}')".format(user=global_user2, host=global_host2))
-   os.system( "scp {user}@{host}:metrics/telegraf.txt $HOME/testResults/005.scale.{user}.telegraf.metrics.txt".format(user=global_user2, host=global_host2))
-   os.system( "ssh {user}@{host} kill $(ssh {user}@{host} ps | grep telegraf | awk '{{print $1}}')".format(user=global_user3, host=global_host3))
-   os.system( "scp {user}@{host}:metrics/telegraf.txt $HOME/testResults/005.scale.{user}.telegraf.metrics.txt".format(user=global_user3, host=global_host3))
+    global starttime
+    global stored_configuration
+
+    csv_prefix = environment.parsed_options.csv_prefix
+    testsuite = Path( environment.parsed_options.locustfile).stem
+
+    helpers.on_test_stop( stored_configuration, csv_prefix)
+    helpers.write_stop_information( csv_prefix, testsuite, starttime)
+

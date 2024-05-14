@@ -4,8 +4,8 @@ import os
 import time
 from pathlib import Path
 
-from casual.performance.test import (casual, configuration, helpers, lookup,
-                                     telegraf)
+from casual.performance.test import (casual, configuration, helpers, jca,
+                                     lookup, telegraf)
 
 starttime = float()
 stored_configuration = {}
@@ -25,12 +25,12 @@ def domainX(base: str, host_alias: str):
 
     # gateway
     config_domain_X.domain.gateway.outbound.groups.append('outbound').connections.append( 
-        lookup.inbound_gateway_address( "domainY", "hostB")
+        lookup.inbound_gateway_address( "jca02", "hostA")
     )
 
     # queue
     config_domain_X.domain.queue.groups.append('test007').queues.append('test007.q1')
-    config_domain_X.domain.queue.forward.groups.append('test007').services.append(source='test007.q1', target='casual/example/sleep')
+    config_domain_X.domain.queue.forward.groups.append('test007').services.append(source='test007.q1', target='javaEcho')
 
     # executables
     config_domain_X.domain.executables.append(
@@ -65,37 +65,6 @@ done
     }
 
 
-def domainY(base: str, host_alias: str):
-    """
-    domain definition for a testdomain
-    """
-
-    # Use name of function as name of domain
-    name = inspect.currentframe().f_code.co_name
-    home = os.path.join(base, name)
-
-    config_domain_Y = configuration.Configuration( name)
-    config_domain_Y.domain.servers.find_first('casual-example-server').arguments = ['--sleep', '50ms', '--work', '20ms']
-    # gateway
-    config_domain_Y.domain.gateway.inbound.groups.append('inbound').connections.append( 
-        lookup.inbound_gateway_address( "domainY", host_alias)
-    )
-
-    return {
-        "name" : name,
-        "home" : home,
-        "lookup" : {
-            "host": lookup.host( host_alias),
-            "domain" : lookup.domain( name)
-        },
-        "files" : 
-        [
-            config_domain_Y.configuration_file_entry()
-        ],
-        "nginx_port" : lookup.inbound_http_port( name)
-    }
-
-
 def test_setup(csv_prefix: str):
     global starttime
     global stored_configuration
@@ -107,8 +76,8 @@ def test_setup(csv_prefix: str):
         [
             telegraf.config( base, "telegrafA", "hostA"),
             telegraf.config( base, "telegrafB", "hostB"),
-            domainX(base, "hostA"),
-            domainY(base, "hostB")
+            domainX(base, "hostB"),
+            jca.config("jca02", "hostA")
         ]
     }
 
@@ -126,17 +95,14 @@ def test_stop(csv_prefix):
 
 def test_stage(instances: int, stage_time: float):
     dX = helpers.get_domain(stored_configuration, "domainX")
-    dY = helpers.get_domain(stored_configuration, "domainY")
     
     # Fill queue
     casual.scale_queue_forward(dX, "test007.q1", 0)
-    casual.scale_instance(dY, "casual-example-server", 0)
     casual.scale_instance(dX, "prepare-queue", 1)
     time.sleep(stage_time / 2.0)
 
     # Process queue
     casual.scale_instance(dX, "prepare-queue", 0)
-    casual.scale_instance(dY, "casual-example-server", instances)
     casual.scale_queue_forward(dX, "test007.q1", instances)
     time.sleep(stage_time / 2.0)
 
@@ -146,8 +112,6 @@ def main():
     parser.add_argument('-c', '--csv', help="Prefix for csv files", required=True)
     parser.add_argument('-t', '--run-time', help="Total run time (in seconds)", type=float, default=60)
     arguments = parser.parse_args()
-
-    print(f"test case file: {__file__}")
 
     test_setup(arguments.csv)
 
@@ -159,7 +123,7 @@ def main():
     test_stage(2, stage_time)
     test_stage(4, stage_time)
     test_stage(8, stage_time)
-    
+
     test_stop(arguments.csv)
 
 
