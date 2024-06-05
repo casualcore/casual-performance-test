@@ -16,7 +16,7 @@ stored_configuration={}
 
 ###########################################################################################################
 
-global_service = "javaEcho"
+global_service = "casual/example/java/echo"
 global_1B = base64.b64encode( bytes( 1))
 global_1K = base64.b64encode( bytes( 1 * 1024))
 global_10K = base64.b64encode( bytes( 10 * 1024))

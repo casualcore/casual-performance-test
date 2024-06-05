@@ -56,6 +56,8 @@ def url_prefix(domain_name, host_alias):
 def inbound_http_port(name):
     return domain(name)["inbound-http-port"]
 
+def inbound_http_address(domain_name, host_alias):
+    return f'{host(host_alias)["hostname"]}:{domain(domain_name)["inbound-http-port"]}'
 
 def inbound_gateway_port(domain_name):
     return domain(domain_name)['inbound-gateway-port']

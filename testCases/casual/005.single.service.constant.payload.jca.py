@@ -23,7 +23,7 @@ class TestCase( FastHttpUser):
    @task
    def task3( self):
       self.client.post(
-         "/javaEcho",
+         "/casual/example/java/echo",
          name = "10K",
          headers = { "content-type": "application/casual-x-octet"},
          data = global_10K)
