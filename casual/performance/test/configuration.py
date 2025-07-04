@@ -452,7 +452,7 @@ class Domain(object):
     """
     Domain part of configuration. This groups all interessting configuration.
     """
-    def __init__(self, name, default_transaction = True, eventlog = True, http_outbound = True, example_server = True):
+    def __init__(self, name, default_transaction = True, eventlog = True, http_inbound = True, example_servers = True):
         self.name = name
         self.groups = GroupList() 
         self.servers = ServerList() 
@@ -476,20 +476,20 @@ class Domain(object):
                 arguments = [ "--file", "logs/statistics.log" ],
                 instances = 1
             )
-        if http_outbound:
+        if http_inbound:
             self.executables.append( 
                 alias = "casual-http-inbound",
                 path = "${CASUAL_HOME}/nginx/sbin/nginx",
                 arguments = [ 
                     "-c", 
-                    "${CASUAL_DOMAIN_HOME}/configuration/nginx.conf",
+                    "${CASUAL_HOME}/nginx/conf/nginx.conf",
                     "-p",
                     "${CASUAL_DOMAIN_HOME}",
                 ],
                 instances = 1
             )
 
-        if example_server:
+        if example_servers:
             self.servers.append(
                 alias = "casual-example-server",
                 path =  "${CASUAL_HOME}/example/bin/casual-example-server",
@@ -544,8 +544,8 @@ class Configuration(object):
     """
     Main configuration object
     """
-    def __init__(self, name = None, default_transaction = True, eventlog = True, http_outbound = True, example_server = True):
-        self.domain = Domain( name, default_transaction, eventlog, http_outbound, example_server)
+    def __init__(self, name = None, default_transaction = True, eventlog = True, http_inbound = True, example_servers = True):
+        self.domain = Domain( name, default_transaction, eventlog, http_inbound, example_servers)
         self.system = System()
     
     def as_json(self):
@@ -570,6 +570,6 @@ class Configuration(object):
 if __name__ == '__main__':    
 
     config_domain_X = Configuration( "example")
-    config_domain_X.domain.services.append("test-service").routes.extend(['nisse', 'hult'])
-    config_domain_X.domain.queue.forward.groups.append("test").services.append(source="sune", target="mangs")
+    # config_domain_X.domain.services.append("test-service").routes.extend(['nisse', 'hult'])
+    # config_domain_X.domain.queue.forward.groups.append("test").services.append(source="sune", target="mangs")
     print(config_domain_X.as_yaml())
