@@ -6,10 +6,10 @@ import yaml
 
 
 # load/import python testcase file
-spec = importlib.util.spec_from_file_location('testcase', '/home/casual/python/testcase.py')
-testcase = importlib.util.module_from_spec(spec)
-sys.modules['testcase'] = testcase
-spec.loader.exec_module(testcase)
+if (spec := importlib.util.spec_from_file_location('testcase', '/home/casual/python/testcase.py')) is not None:
+    testcase = importlib.util.module_from_spec(spec)
+    sys.modules['testcase'] = testcase
+    spec.loader.exec_module(testcase)
 
 with open('/home/casual/test/parameters.yaml') as parameter_file:
     parameters = yaml.safe_load(parameter_file)

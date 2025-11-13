@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
-import locust
 import argparse
 import importlib.util
+import os
 import secrets
 import shutil
 import subprocess
@@ -15,7 +15,7 @@ from pathlib import Path
 
 config.load_kube_config()
 core_api = client.CoreV1Api()
-apps_api = client.AppsV1Api()
+apps_api = client.AppsV1Api() # type: ignore
 batch_api = client.BatchV1Api()
 
 def _create_namespace_object(name: str):
@@ -65,8 +65,18 @@ def _create_service_object(name):
     return svc
 
 
-def _create_pvc_object(name):
-    pass
+def _create_pvc_object(name: str):
+    pvc = client.V1PersistentVolumeClaim(
+        metadata=client.V1ObjectMeta(name=name),
+        spec=client.V1PersistentVolumeClaimSpec(
+            access_modes=['ReadWriteOnce'],
+            storage_class_name='local-path',
+            resources=client.V1VolumeResourceRequirements(
+                requests={"storage": "2Gi"}
+            )
+        )
+    )
+    return pvc
 
 
 def _create_configmap_object(name, data):
@@ -86,7 +96,8 @@ def _create_job_object(name, image):
         volume_mounts=[
             client.V1VolumeMount(name='domain-config', mount_path='/home/casual/configuration/domain.yaml', sub_path='domain.yaml'),
             client.V1VolumeMount(name='testcase-script', mount_path='/home/casual/python/testcase.py', sub_path='testcase.py'),
-            client.V1VolumeMount(name='testcase-parameters', mount_path='/home/casual/test/parameters.yaml', sub_path='parameters.yaml')
+            client.V1VolumeMount(name='testcase-parameters', mount_path='/home/casual/test/parameters.yaml', sub_path='parameters.yaml'),
+            client.V1VolumeMount(name='casual-logs', mount_path='/home/casual/logs')
         ]
     )
     
@@ -98,7 +109,8 @@ def _create_job_object(name, image):
             volumes=[
                 client.V1Volume(name='domain-config', config_map=client.V1ConfigMapVolumeSource(name=f'{name}-config')),
                 client.V1Volume(name='testcase-script', config_map=client.V1ConfigMapVolumeSource(name=f'{name}-script')),
-                client.V1Volume(name='testcase-parameters', config_map=client.V1ConfigMapVolumeSource(name=f'{name}-parameters'))
+                client.V1Volume(name='testcase-parameters', config_map=client.V1ConfigMapVolumeSource(name=f'{name}-parameters')),
+                client.V1Volume(name='casual-logs', persistent_volume_claim=client.V1PersistentVolumeClaimVolumeSource(claim_name='casual-logs-pvc'))
             ]
         )
     )
@@ -141,6 +153,11 @@ def create_job(namespace: str, name: str, image: str):
     batch_api.create_namespaced_job(namespace=namespace, body=job)
 
 
+def create_pvc(namespace: str, name:str):
+    pvc = _create_pvc_object(name)
+    core_api.create_namespaced_persistent_volume_claim(namespace=namespace, body=pvc)
+
+
 def wait_for_deployment(namespace: str, name: str, timeout = 30) -> str | None:
     w = watch.Watch()
     for event in w.stream(func=core_api.list_namespaced_pod,
@@ -153,7 +170,7 @@ def wait_for_deployment(namespace: str, name: str, timeout = 30) -> str | None:
 
     return None
 
-def wait_for_job(namespace: str, name: str, timeout) -> str | None:
+def wait_for_job_completion(namespace: str, name: str, timeout) -> str | None:
     w = watch.Watch()
     for event in w.stream(func=batch_api.list_namespaced_job,
                           namespace=namespace,
@@ -176,7 +193,7 @@ def get_remote_file(namespace: str, name: str, filename: str, destdir: str):
     pass
 
 
-default_parameters = {
+default_parameters : dict[str,int|float|str] = {
     "runtime": 60
 }
 
@@ -197,22 +214,59 @@ def collect_parameters(param_list: list[str]):
     print(f"parameters: {parameters}")
     return parameters
 
+def start_log_reader(namespace: str):
+    container = client.V1Container(
+        name='log-reader',
+        image='alpine:latest',
+        image_pull_policy='Always',
+        command=['sleep', 'infinity'],
+        volume_mounts=[
+            client.V1VolumeMount(name='casual-logs', mount_path='/tmp/logs')
+        ]
+    )
+    template = client.V1PodTemplateSpec(
+        metadata=client.V1ObjectMeta(labels={'app': 'log-reader'}),
+        spec=client.V1PodSpec(
+            containers=[container],
+            volumes=[
+                client.V1Volume(name='casual-logs', persistent_volume_claim=client.V1PersistentVolumeClaimVolumeSource(claim_name='casual-logs-pvc'))
+            ]
+        )
+    )
+    spec = client.V1DeploymentSpec(
+        template=template,
+        selector={'matchLabels': {'app': 'log-reader'}}
+    )
+    deployment = client.V1Deployment(
+        api_version='apps/v1',
+        kind='Deployment',
+        metadata=client.V1ObjectMeta(name='log-reader'),
+        spec=spec,
+    )
+    apps_api.create_namespaced_deployment(namespace=namespace, body=deployment)
+
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('file', help="Python file with testcase")
     parser.add_argument('-p', '--parameters', dest="parameters", default=[], required=False, nargs=1, action='extend', help="Add testcase parameters (key=value)")
-    parser.add_argument('--image', default='oscc1:30000/casual-performance:1.7.8')
+    parser.add_argument('--image-version', default='1.8.5')
     parser.add_argument('-o', '--output-name', default='result')
+    parser.add_argument('--clean', action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument('--zip-results', action=argparse.BooleanOptionalAction, default=True)
     args = parser.parse_args()
 
     parameters = collect_parameters(args.parameters)
 
+    casual_image = f"{os.environ['CASUAL_PERFORMANCE_IMAGE_REPO']}/casual-performance:{args.image_version}"
+
     # Generate a namespace name
     namespace = f'performance-{secrets.token_hex(6)}'
     create_namespace(namespace)
     print(f'Namespace: {namespace} created')
+
+    create_pvc(namespace=namespace, name='casual-logs-pvc')
+    print(f'PVC created')
 
     # load/import python testcase file
     spec = importlib.util.spec_from_file_location('testcase', args.file)
@@ -221,6 +275,10 @@ def main():
         sys.exit(1)
     
     testcase = importlib.util.module_from_spec(spec)
+    if testcase is None:
+        print("Failed to load/import python testcase.")
+        sys.exit(1)
+
     sys.modules['testcase'] = testcase
     spec.loader.exec_module(testcase)
 
@@ -229,7 +287,7 @@ def main():
     for name, config in domains.items():
         if name != 'runner':
             create_configmap(namespace=namespace, name=f'{name}-config', data={'domain.yaml': config.as_yaml()})
-            create_deployment(namespace=namespace, name=name, image=args.image)
+            create_deployment(namespace=namespace, name=name, image=casual_image)
             print(f'Created domain: {name}')
 
     started_domains = []
@@ -252,13 +310,17 @@ def main():
         create_configmap(namespace=namespace, name=f'runner-parameters', data={'parameters.yaml': yaml.safe_dump(parameters)})
         create_configmap(namespace=namespace, name=f'runner-script', data={'testcase.py': file_contents})
         print(f'Creating job: runner')
-        create_job(namespace=namespace, name='runner', image='oscc1:30000/casual-performance:1.7.8')
+        create_job(namespace=namespace, name='runner', image=casual_image)
 
-    job_name = wait_for_job(namespace=namespace, name=name, timeout=2 * parameters.get('runtime',30))
+    job_name = wait_for_job_completion(namespace=namespace, name=name, timeout=2 * parameters.get('runtime',30))
     if job_name is not None:
         print(f'Job completed: {job_name}')
         # Ooops, cannot get file from completed pod...
         # get_remote_file(namespace, get_job_pod(namespace, job_name), 'logs', destdir=args.output_name)
+
+    start_log_reader(namespace=namespace)
+    log_reader_name = wait_for_deployment(namespace=namespace, name='log-reader')
+    rc = subprocess.run(f'kubectl cp -n {namespace} {log_reader_name}:/tmp/logs {args.output_name}/{namespace}/runner/logs', shell=True)
 
     # get all results
     for name  in started_domains:

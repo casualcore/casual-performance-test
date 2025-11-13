@@ -72,7 +72,7 @@ domain:
 [[inputs.cpu]]
   percpu = false
   totalcpu = true
-  drop = ["cpu_time"]
+  fieldexclude = ["cpu_time"]
 
 # Read metrics about memory usage
 [[inputs.mem]]
