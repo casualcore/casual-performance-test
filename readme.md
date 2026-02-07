@@ -28,15 +28,15 @@ Test with `kubectl get nodes`
 
 6. Set environment
 
-`%> export CASUAL_PERFOMANCE_IMAGE_REPO=<url-to-private-repo>`
+`%> export CASUAL_PERFORMANCE_IMAGE_REPO=<url-to-private-repo>`
 
 7. Build and push image for desired version(s) of casual
 
-`%> ./build_image.sh 1.8.5`
+`%> ./build_image.sh 1.8.6`
 
 ## Run tests
 
-`%> kube.py --image-version 1.8.5 -p runtime=60 testCases/casual/007_queue_forward_local.py`
+`%> ./kube.py --image-version 1.8.6 -p runtime=60 testCases/casual/007_queue_forward_local.py`
 
 This will create a new namespace in your kubernetes cluster that will contain any kubernetes objects created by this testcase.
 After the test is done, all log files are extraced from the pods and stored in a zip file named `result.zip` (default behaviour)
