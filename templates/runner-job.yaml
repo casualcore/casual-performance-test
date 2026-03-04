@@ -1,0 +1,40 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: runner
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      containers:
+        - name: runner
+          image: {image}
+          command:
+            - '/bin/bash'
+            - '-c'
+            - 'casual domain -b configuration/*.yaml && python3 /home/casual/runner.py'
+          volumeMounts:
+            - name: domain-config
+              mountPath: /home/casual/configuration/domain.yaml
+              subPath: domain.yaml
+            - name: testcase-script
+              mountPath: /home/casual/python/testcase.py
+              subPath: testcase.py
+            - name: testcase-parameters
+              mountPath: /home/casual/test/parameters.yaml
+              subPath: parameters.yaml
+            - name: casual-logs
+              mountPath: /home/casual/logs
+      volumes:
+        - name: domain-config
+          configMap:
+            name: runner-config
+        - name: testcase-script
+          configMap:
+            name: runner-script
+        - name: testcase-parameters
+          configMap:
+            name: runner-parameters
+        - name: casual-logs
+          persistentVolumeClaim:
+            claimName: casual-logs-pvc

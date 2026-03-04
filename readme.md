@@ -9,34 +9,40 @@
 
 ## Setup
 
-1. Setup proper roles and permissions on kubernetes to allow creation of new namespace, pvc's, deployments and jobs
+Setup proper roles and permissions on kubernetes to allow creation of new namespace, pvc's, deployments and jobs
 
-2. Verify that you can access your kubernetes cluster
-Test with `kubectl get nodes`
+Verify that you can access your kubernetes cluster. Test with `kubectl get nodes`
 
-3. Clone repo
+### Clone repo
 
-4. Create virtual environment for python
+### Create virtual environment for python
 
-`%> python -m venv <env-path>`
-`%> source <env-path>/bin/activate`
-`%> pip install -r requirements.txt`
+```
+%> python -m venv <env-path>
+%> source <env-path>/bin/activate
+%> pip install -r requirements.txt
+```
 
-5. Adjust python path
+### Adjust python path and environment
 
-`%> export PYTHON_PATH=<path-to-repo>`
+```
+%> export PYTHON_PATH=<path-to-repo>
+%> export CASUAL_PERFORMANCE_IMAGE_REPO=<url-to-private-repo>
+```
 
-6. Set environment
+### Build and push image for desired version(s) of casual
 
-`%> export CASUAL_PERFORMANCE_IMAGE_REPO=<url-to-private-repo>`
-
-7. Build and push image for desired version(s) of casual
-
-`%> ./build_image.sh 1.8.6`
+```
+%> ./build_image.sh 1.8.12
+```
 
 ## Run tests
 
-`%> ./kube.py --image-version 1.8.6 -p runtime=60 testCases/casual/007_queue_forward_local.py`
+Example:
+
+```
+%> ./kube.py --image-version 1.8.12 -p runtime=60 testCases/casual/007_queue_forward_local.py
+```
 
 This will create a new namespace in your kubernetes cluster that will contain any kubernetes objects created by this testcase.
 After the test is done, all log files are extraced from the pods and stored in a zip file named `result.zip` (default behaviour)

@@ -17,11 +17,12 @@ RUN mkdir -p $CASUAL_DOMAIN_HOME/logs
 RUN mkdir -p $CASUAL_DOMAIN_HOME/configuration
 RUN chown -R casual $CASUAL_DOMAIN_HOME
 ADD docker/casual-performance/requirements.txt requirements.txt
-RUN python3 -m venv /home/casual/venv && source /home/casual/venv/bin/activate && pip install -r requirements.txt 
+# RUN python3 -m venv /home/casual/venv && source /home/casual/venv/bin/activate && pip install -r requirements.txt 
+RUN pip3 install -r requirements.txt 
 
 USER casual
 RUN echo "source /opt/casual/etc/bash_completion.d/casual" >> /home/casual/.bashrc
-ADD docker/casual-performance/runner.py $CASUAL_DOMAIN_HOME/
+ADD docker/casual-performance/*.py $CASUAL_DOMAIN_HOME/
 ADD casual $CASUAL_DOMAIN_HOME/python/casual
 COPY --from=builder /tmp/tpcall-client ${CASUAL_DOMAIN_HOME}/
 

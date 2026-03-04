@@ -1,4 +1,8 @@
 kubernetes
 locust
-requests
+opentelemetry-api
+opentelemetry-exporter-otlp-proto-http
+opentelemetry-exporter-otlp-proto-grpc
+opentelemetry-sdk
 pyyaml
+requests

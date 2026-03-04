@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {name}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {name}
+  template:
+    metadata:
+      labels:
+        app: {name}
+      annotations:
+        sidecar.opentelemetry.io/inject: 'opentelemetry/sidecar-log-collector'
+    spec:
+      containers:
+        - name: casual
+          image: {image}
+          volumeMounts:
+            - name: domain-config
+              mountPath: /home/casual/configuration/domain.yaml
+              subPath: domain.yaml
+            - name: casual-logs
+              mountPath: /home/casual/logs
+      volumes:
+        - name: domain-config
+          configMap:
+            name: '{name}-config'
+        - name: casual-logs
+          emptyDir:
+            medium: ''

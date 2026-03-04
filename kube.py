@@ -18,6 +18,14 @@ core_api = client.CoreV1Api()
 apps_api = client.AppsV1Api() # type: ignore
 batch_api = client.BatchV1Api()
 
+
+def _load_template(template_name: str, **kwargs):
+    path = Path('templates') / f'{template_name}'
+    with path.open('r') as f:
+        template = f.read()
+        return yaml.safe_load(template.format(**kwargs))
+
+
 def _create_namespace_object(name: str):
     ns = client.V1Namespace(metadata=client.V1ObjectMeta(name=name))
     return ns
@@ -92,7 +100,7 @@ def _create_job_object(name, image):
         name=name,
         image=image,
         image_pull_policy='Always',
-        command=['/bin/bash', '-c', 'casual domain -b configuration/*.yaml && source /home/casual/venv/bin/activate && python3 /home/casual/runner.py'],
+        command=['/bin/bash', '-c', 'casual domain -b configuration/*.yaml && python3 /home/casual/runner.py'],
         volume_mounts=[
             client.V1VolumeMount(name='domain-config', mount_path='/home/casual/configuration/domain.yaml', sub_path='domain.yaml'),
             client.V1VolumeMount(name='testcase-script', mount_path='/home/casual/python/testcase.py', sub_path='testcase.py'),
@@ -141,7 +149,8 @@ def create_configmap(namespace: str, name: str, data: dict):
 
 
 def create_deployment(namespace: str, name: str, image: str):
-    dp = _create_deployment_object(name, image)
+    # dp = _create_deployment_object(name, image)
+    dp = _load_template('domain-deployment.yaml', name=name, image=image)
     svc = _create_service_object(name)
 
     core_api.create_namespaced_service(namespace=namespace, body=svc)
